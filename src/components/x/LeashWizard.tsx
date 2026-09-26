@@ -91,6 +91,21 @@ export default function LeashWizard({ initial = "yield-1" }: { initial?: Slug })
   const [error, setError] = useState<string | null>(null);
   const [leashes, setLeashes] = useState<Leash[]>([]);
   const [done, setDone] = useState<Record<string, string | null>>({});
+  /*
+    Whether this browser can make a passkey at all. Several wallet apps' own
+    browsers cannot, and there the button would wait on a prompt that never
+    comes. "platform" is whether this device has its own fingerprint or face
+    unlock; without one a passkey can still live on a phone or a security key.
+  */
+  const [passkeys, setPasskeys] = useState<"unknown" | "none" | "roaming" | "platform">("unknown");
+  useEffect(() => {
+    const P = (window as unknown as { PublicKeyCredential?: { isUserVerifyingPlatformAuthenticatorAvailable?: () => Promise<boolean> } }).PublicKeyCredential;
+    if (!P || !navigator.credentials) return setPasskeys("none");
+    (P.isUserVerifyingPlatformAuthenticatorAvailable?.() ?? Promise.resolve(false)).then(
+      (yes) => setPasskeys(yes ? "platform" : "roaming"),
+      () => setPasskeys("roaming"),
+    );
+  }, []);
 
   const wallet = pk?.address ?? known;
   useEffect(() => {
@@ -252,8 +267,16 @@ export default function LeashWizard({ initial = "yield-1" }: { initial?: Slug })
             <p className="x-leash__ok">
               <Check size={14} aria-hidden="true" /> Unlocked <span className="x-mono">{pk.address}</span>
             </p>
+          ) : passkeys === "none" ? (
+            <p className="x-leash__warn">
+              This browser cannot make a passkey, which is how the wallet is unlocked. Wallet apps&apos; built-in browsers often cannot. Open{" "}
+              <span className="x-mono">mandatemarkets.com/leash</span> in Chrome, Safari or Edge; your main wallet can still connect there.
+            </p>
           ) : (
             <div className="x-leash__row">
+              {passkeys === "roaming" ? (
+                <p className="x-leash__note">This device has no fingerprint or face unlock of its own, so the passkey will live on your phone or a security key when you are asked.</p>
+              ) : null}
               {known ? (
                 <button type="button" className="x-btn x-btn--primary" onClick={unlock} disabled={busy !== null}>
                   <Fingerprint size={16} aria-hidden="true" /> {busy === "unlock" ? "Waiting for your passkey…" : `Unlock ${known.slice(0, 6)}…${known.slice(-4)}`}

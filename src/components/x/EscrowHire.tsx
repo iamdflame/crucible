@@ -218,9 +218,12 @@ export default function EscrowHire({
         ))}
       </ol>
       {failedAt !== null ? (
-        <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run}>
-          Try again from step {failedAt + 1}
-        </button>
+        <>
+          {error ? <p className="x-escrow__err">{error}</p> : null}
+          <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run}>
+            Try again from step {failedAt + 1}
+          </button>
+        </>
       ) : null}
       {at < 0 ? (
         balance !== null && balance < budget ? (
@@ -270,7 +273,7 @@ export default function EscrowHire({
           {delivered && fundTx ? <RateAgent tokenId={offer.tokenId} name={offer.name} category={category} hireTx={fundTx} /> : null}
         </div>
       ) : null}
-      {error ? <p className="x-escrow__err">{error}</p> : null}
+      {error && failedAt === null ? <p className="x-escrow__err">{error}</p> : null}
     </div>
   );
 }

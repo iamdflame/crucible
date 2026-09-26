@@ -44,9 +44,10 @@ html:has(.m-app) body {
   --rule-hair: var(--c-line-faint);
 
   /*
-    Meaning carries colour and nothing else does. Yellow is an action, a
-    selection, a price or something live. Green is something we checked and
-    it passed. Red is kept for destructive actions and dead endpoints.
+    Meaning carries colour and nothing else does. Green, the Seal's accent,
+    is an action, a selection, a price, something live, or something we
+    checked and it passed. Amber is a warning. Red is kept for errors,
+    destructive actions and dead endpoints.
   */
   --signal: var(--c-accent);
   --signal-deep: var(--c-accent-hi);
@@ -54,8 +55,9 @@ html:has(.m-app) body {
   --signal-ink: var(--c-accent-ink);
   --verified: var(--c-ok);
   --verified-wash: var(--c-ok-soft);
-  --caution: var(--c-accent);
-  --caution-wash: var(--c-accent-soft);
+  /* A warning is amber and an error red. Both were mapped to the accent when the brand went green, so every warning read as a success. */
+  --caution: var(--c-warn);
+  --caution-wash: var(--c-warn-soft);
 
   --focus: var(--c-accent);
 
@@ -702,7 +704,7 @@ html:has(.m-app) body {
   color: var(--ink);
 }
 .m-wallet__chip--warn {
-  border-color: var(--signal);
+  border-color: var(--c-warn);
 }
 .m-wallet__panel {
   display: grid;
@@ -1258,11 +1260,11 @@ html:has(.m-app) body {
 }
 
 .m-error {
-  border-left: 2px solid var(--signal);
-  background: var(--signal-wash);
+  border-left: 2px solid var(--c-err);
+  background: var(--c-err-soft);
   padding: 0.8rem 1rem;
   font-size: var(--m-small);
-  color: var(--signal-deep);
+  color: var(--c-text);
   border-radius: 0 2px 2px 0;
 }
 
