@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatUnits, parseEventLogs, type Address, type Hash } from "viem";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { marketClient } from "@/lib/chain/market";
 import { sendMarketTx, useWallet } from "@/lib/chain/wallet";
 import OpenInWallet from "./OpenInWallet";
@@ -57,7 +57,16 @@ export default function EscrowHire({
   const [bnb, setBnb] = useState<bigint | null>(null);
   const [at, setAt] = useState(-1);
   const [jobId, setJobId] = useState<bigint | null>(null);
-  const [txs, setTxs] = useState<Hash[]>([]);
+  // Each step's transaction, by the step's own number: a skipped approval must not shift the ones after it.
+  const [txs, setTxs] = useState<Partial<Record<number, Hash>>>({});
+  const [doneSteps, setDoneSteps] = useState<number[]>([]);
+  const [failedAt, setFailedAt] = useState<number | null>(null);
+  /*
+    What is already on chain, kept across a retry. A buyer who rejects step
+    three has an open job already; trying again carries on from step three on
+    that job rather than opening, and paying gas for, a second one.
+  */
+  const progress = useRef<{ id: bigint | null; expiredAt: bigint | null; steps: Set<number> }>({ id: null, expiredAt: null, steps: new Set() });
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<{ status: string; deliverableUrl: string | null; submitTx?: string | null; answer?: unknown } | null>(null);
   const [fundTx, setFundTx] = useState<Hash | null>(null);
@@ -95,34 +104,47 @@ export default function EscrowHire({
   const run = async () => {
     if (!address || disputeWindow === null) return;
     setError(null);
-    const hashes: Hash[] = [];
+    setFailedAt(null);
+    const d = progress.current;
+    let current = -1;
     const step = async (i: number, fn: () => Promise<Hash>) => {
+      current = i;
       setAt(i);
       const h = await fn();
-      hashes.push(h);
-      setTxs([...hashes]);
+      d.steps.add(i);
+      setDoneSteps([...d.steps]);
+      setTxs((t) => ({ ...t, [i]: h }));
       return h;
     };
     try {
-      const expiredAt = BigInt(Math.floor(Date.now() / 1000)) + disputeWindow + BigInt(DELIVERY_SECONDS);
+      d.expiredAt ??= BigInt(Math.floor(Date.now() / 1000)) + disputeWindow + BigInt(DELIVERY_SECONDS);
       const about = subject ?? address;
       // An outside seller reads its task from the description; ours is the line any indexer can match.
       const description = offer.outside
         ? outsideDescription(offer.outside.serviceName ?? offer.name, offer.outside.service, inputs)
         : `${VIA}: ${offer.name} (ERC-8004 #${offer.tokenId}) for ${about}`;
-      const created = await step(0, () =>
-        sendMarketTx(address, "createJob", [offer.provider as Address, ESCROW.router, expiredAt, description, ESCROW.router], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }),
-      );
-      const receipt = await marketClient.getTransactionReceipt({ hash: created });
-      const log = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobCreated", logs: receipt.logs })[0];
-      if (!log) throw new Error("The job opened, but its number could not be read from the receipt.");
-      const id = log.args.jobId;
-      setJobId(id);
-      await step(1, () => sendMarketTx(address, "registerJob", [id, ESCROW.policy], undefined, undefined, { address: ESCROW.router, abi: ROUTER_ABI }));
-      await step(2, () => sendMarketTx(address, "setBudget", [id, budget, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
-      const allowance = (await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "allowance", args: [address, ESCROW.commerce] })) as bigint;
-      if (allowance < budget) {
-        await step(3, () => sendMarketTx(address, "approve", [ESCROW.commerce, budget], undefined, undefined, { address: ESCROW.paymentToken, abi: TOKEN_ABI }));
+      if (d.id === null) {
+        const created = await step(0, () =>
+          sendMarketTx(address, "createJob", [offer.provider as Address, ESCROW.router, d.expiredAt, description, ESCROW.router], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }),
+        );
+        const receipt = await marketClient.getTransactionReceipt({ hash: created });
+        const log = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobCreated", logs: receipt.logs })[0];
+        if (!log) throw new Error("The job opened, but its number could not be read from the receipt.");
+        d.id = log.args.jobId;
+        setJobId(d.id);
+      }
+      const id = d.id;
+      if (!d.steps.has(1)) await step(1, () => sendMarketTx(address, "registerJob", [id, ESCROW.policy], undefined, undefined, { address: ESCROW.router, abi: ROUTER_ABI }));
+      if (!d.steps.has(2)) await step(2, () => sendMarketTx(address, "setBudget", [id, budget, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
+      if (!d.steps.has(3)) {
+        const allowance = (await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "allowance", args: [address, ESCROW.commerce] })) as bigint;
+        if (allowance < budget) {
+          await step(3, () => sendMarketTx(address, "approve", [ESCROW.commerce, budget], undefined, undefined, { address: ESCROW.paymentToken, abi: TOKEN_ABI }));
+        } else {
+          // Already approved for at least the budget: nothing to sign.
+          d.steps.add(3);
+          setDoneSteps([...d.steps]);
+        }
       }
       const funded = await step(4, () => sendMarketTx(address, "fund", [id, budget, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
       setAt(5);
@@ -134,7 +156,9 @@ export default function EscrowHire({
       });
       void poll(id);
     } catch (e) {
-      setError((e as Error).message.slice(0, 200));
+      setFailedAt(current);
+      // Until the fund step confirms, no token has left the buyer's wallet, whatever else was signed.
+      setError(`${(e as Error).message.slice(0, 200)} Nothing has left your wallet.`);
     }
   };
 
@@ -171,8 +195,19 @@ export default function EscrowHire({
       </p>
       <ol className="x-escrow__steps">
         {STEPS.map((s, i) => (
-          <li key={s} className={i < at || at >= 5 ? "x-escrow__done" : i === at ? "x-escrow__now" : undefined}>
-            {i < at || at >= 5 ? <Check size={14} aria-hidden="true" /> : i === at ? <Loader2 size={14} className="x-spin" aria-hidden="true" /> : <span className="x-escrow__n">{i + 1}</span>}
+          <li
+            key={s}
+            className={doneSteps.includes(i) || at >= 5 ? "x-escrow__done" : i === failedAt ? "x-escrow__failed" : i === at ? "x-escrow__now" : undefined}
+          >
+            {doneSteps.includes(i) || at >= 5 ? (
+              <Check size={14} aria-hidden="true" />
+            ) : i === failedAt ? (
+              <X size={14} aria-hidden="true" />
+            ) : i === at ? (
+              <Loader2 size={14} className="x-spin" aria-hidden="true" />
+            ) : (
+              <span className="x-escrow__n">{i + 1}</span>
+            )}
             {s}
             {txs[i] ? (
               <a className="x-link x-mono" href={`https://bscscan.com/tx/${txs[i]}`} target="_blank" rel="noreferrer">
@@ -182,6 +217,11 @@ export default function EscrowHire({
           </li>
         ))}
       </ol>
+      {failedAt !== null ? (
+        <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run}>
+          Try again from step {failedAt + 1}
+        </button>
+      ) : null}
       {at < 0 ? (
         balance !== null && balance < budget ? (
           <p className="x-escrow__err">

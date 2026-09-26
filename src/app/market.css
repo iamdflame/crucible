@@ -6081,6 +6081,12 @@ a.x-house__name:hover {
 .x-escrow__now {
   color: var(--c-text);
 }
+.x-escrow__failed {
+  color: var(--c-text);
+}
+.x-escrow__failed svg {
+  color: var(--c-err);
+}
 .x-escrow__job {
   padding: var(--s-3);
   border-radius: var(--r-md);
