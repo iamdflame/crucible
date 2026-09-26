@@ -77,6 +77,7 @@
     "fund-test-wallet": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/fund-test-wallet.ts",
     "escrow-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/escrow-e2e.ts",
     "escrow-outside-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/escrow-outside-e2e.ts",
+    "telegram-setup": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/telegram-setup.ts",
     "quest-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/quest-e2e.ts",
     "leash-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/leash-e2e.ts",
     "jobs-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/jobs-e2e.ts",

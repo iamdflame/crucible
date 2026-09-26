@@ -23,6 +23,7 @@ const PRIMARY = [
 const MORE = [
   { href: "/help", label: "Help", note: "How hiring works, and who to ask" },
   { href: "/leash", label: "Leash an agent", note: "Let an agent act on your wallet, within your limits" },
+  { href: "/alerts", label: "Liquidation alerts", note: "Free Telegram alerts for your Venus loan" },
   { href: "/categories", label: "Categories", note: "The four jobs, side by side" },
   { href: "/activity", label: "Activity", note: "Every hire and check, live" },
   { href: "/trust", label: "Trust", note: "How every agent is checked" },

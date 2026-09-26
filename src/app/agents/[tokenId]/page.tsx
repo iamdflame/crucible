@@ -634,6 +634,11 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                 Put it on a leash on your own wallet
               </Link>
             ) : null}
+            {l.category === "health-factor" ? (
+              <Link href="/alerts" className="x-btn x-btn--ghost x-btn--block">
+                Free liquidation alerts on Telegram
+              </Link>
+            ) : null}
             <p className="x-ad-note">
               Nothing moves until you sign.{" "}
               <Link className="x-link" href="/help#sign">

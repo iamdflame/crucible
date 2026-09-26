@@ -167,6 +167,34 @@ const STATEMENTS: { name: string; run: () => Promise<unknown> }[] = [
     },
   },
   {
+    /*
+      Free liquidation alerts: a wallet watched for a Telegram chat, the
+      health factor that should wake them, and what we last read and said, so
+      an alert fires on a change rather than on every tick. A row is a code
+      until its chat presses Start in the bot.
+    */
+    name: "telegram_alerts",
+    run: async () => {
+      await pg!`
+        create table if not exists telegram_alerts (
+          id text primary key,
+          wallet text not null,
+          threshold double precision not null,
+          chat_id text,
+          created_at timestamptz not null default now(),
+          linked_at timestamptz,
+          stopped_at timestamptz,
+          last_hf double precision,
+          last_state text,
+          last_alert_at timestamptz,
+          last_checked_at timestamptz
+        )
+      `;
+      await pg!`create index if not exists telegram_alerts_chat on telegram_alerts (chat_id)`;
+      await pg!`create index if not exists telegram_alerts_due on telegram_alerts (last_checked_at) where chat_id is not null and stopped_at is null`;
+    },
+  },
+  {
     // ERC-8183 jobs a buyer funded for one of our agents here, with what our agent delivered and each transaction.
     name: "escrow_jobs",
     run: async () => {

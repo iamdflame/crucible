@@ -29,6 +29,7 @@ import { sweepEscrow } from "@/lib/escrow/jobs";
 import { runLeashes } from "@/lib/leash/run";
 import { advanceEpochs } from "@/lib/market/epochs";
 import { testBuys } from "@/lib/market/test-buys";
+import { checkAlerts } from "@/lib/alerts/watch";
 
 export interface Job {
   name: string;
@@ -226,6 +227,17 @@ export const JOBS: Job[] = [
     budgetMs: 20_000,
     afterResponse: true,
     run: (budgetMs = 18_000) => runLeashes({ budgetMs }),
+  },
+  /*
+    Free liquidation alerts: every watched wallet's Venus health factor, read
+    and compared with what its watcher was last told.
+  */
+  {
+    name: "alerts",
+    everyMinutes: 5,
+    budgetMs: 20_000,
+    afterResponse: true,
+    run: (budgetMs = 18_000) => checkAlerts({ budgetMs }),
   },
   /*
     Jobs with capital, carried through every epoch: proposed by the
