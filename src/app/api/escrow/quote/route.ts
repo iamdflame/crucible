@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const bnbUsd = agent?.category === "grid-trading" ? await poolNow().then((p) => p.usdtPerBnb, () => null) : null;
   const task = taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
 
-  const live = await negotiateFull(known.a2a, task, { signers, notify: known.notify }).catch((e: Error) => ({ error: e.message }));
+  const live = await negotiateFull(known.a2a, task, { signers, notify: known.notify, skill: known.skill }).catch((e: Error) => ({ error: e.message }));
   if ("error" in live) return fail(502, `The agent's seller did not quote just now: ${live.error.slice(0, 120)}`, CHAIN_ID, g.headers);
   const q = live.quote;
   if (q.unpayable) return fail(409, `This agent cannot be hired here right now: ${q.unpayable}.`, CHAIN_ID, g.headers);

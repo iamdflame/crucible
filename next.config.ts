@@ -41,6 +41,21 @@ const config: NextConfig = {
    * exactly the kind this rebuild exists to remove — so every one of them is
    * still a live link to the thing it used to be.
    */
+  /*
+    Our agents' A2A endpoints where BNB's agent SDK looks for them: a buyer
+    reads the endpoint from the agent's ERC-8004 registration and appends
+    /.well-known/agent-card.json for the card, or /negotiate for the SDK
+    agent-server's plain form.
+  */
+  async rewrites() {
+    return [
+      { source: "/a2a/:slug/.well-known/agent-card.json", destination: "/api/a2a/:slug" },
+      { source: "/a2a/:slug/.well-known/agent.json", destination: "/api/a2a/:slug" },
+      { source: "/a2a/:slug/negotiate", destination: "/api/a2a/:slug?mode=negotiate" },
+      { source: "/a2a/:slug", destination: "/api/a2a/:slug" },
+    ];
+  },
+
   async redirects() {
     /*
       Our own domain is the address; the platform one only keeps what chain

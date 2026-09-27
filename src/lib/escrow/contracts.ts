@@ -49,6 +49,8 @@ export const TOKEN_ABI = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
 ]);
 
+export const JOB_FUNDED = parseAbiItem("event JobFunded(uint256 indexed jobId, address indexed client, address indexed provider, uint256 amount)");
+
 export const JOB_CREATED = parseAbiItem(
   "event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)",
 );

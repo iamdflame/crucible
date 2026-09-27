@@ -44,7 +44,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       category: agent.category,
       services: [
         ...(pause ? [] : [{ name: "x402", endpoint: `${HOST}/api/x402/house/${slug}` }]),
-        { name: "A2A", endpoint: `${HOST}/house/${slug}/agent-card.json`, version: "0.3.0" },
+        // BNB's agent SDK appends /.well-known/agent-card.json to this endpoint; the card names the JSON-RPC endpoint itself.
+        { name: "A2A", endpoint: `${HOST}/a2a/${slug}`, version: "0.3.0" },
+        { name: "agentCard", endpoint: `${HOST}/a2a/${slug}/.well-known/agent-card.json` },
         { name: "MCP", endpoint: `${HOST}/api/mcp` },
         { name: "web", endpoint: `${HOST}/desk#${slug}` },
       ],

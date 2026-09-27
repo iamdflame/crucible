@@ -44,7 +44,7 @@ async function main() {
   const agent = findAgent(tokenId);
   const bnbUsd = agent?.category === "grid-trading" ? await poolNow().then((p) => p.usdtPerBnb, () => null) : null;
   const task = taskFor(agent?.category ?? null, agent?.name ?? entry.name ?? tokenId, inputs, { bnbUsd });
-  const { quote, sdk } = await negotiateFull(seller.url, task, { signers, notify: seller.notify });
+  const { quote, sdk } = await negotiateFull(seller.url, task, { signers, notify: seller.notify, skill: seller.skill });
   if (!sdk) throw new Error("the agent answered with a plain quote, not BNB's signed form");
   if (quote.unpayable) throw new Error(`quote refused: ${quote.unpayable}`);
   const budget = BigInt(quote.price);

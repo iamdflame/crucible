@@ -184,8 +184,8 @@ export async function runCensus(opts: CensusOptions): Promise<CensusRun> {
       delete prevEscrow[t.tokenId];
       continue;
     }
-    const q = await negotiate(seller.url, t.name, { signers: t.signers, notify: seller.notify }).catch(() => null);
-    if (q) prevEscrow[t.tokenId] = q;
+    const q = await negotiate(seller.url, t.name, { signers: t.signers, notify: seller.notify, skill: seller.skill }).catch(() => null);
+    if (q) prevEscrow[t.tokenId] = seller.skill === "negotiate" ? q : { ...q, skill: seller.skill };
   }
 
   const all = [...prevResults.values()];

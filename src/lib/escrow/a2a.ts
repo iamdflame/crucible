@@ -46,6 +46,8 @@ export interface EscrowQuote {
   kind?: "sdk" | "simple";
   /** Whether the seller wants to be told a job is funded; SDK agents watch the chain instead. */
   notify?: boolean;
+  /** The negotiation skill id its card lists, when not plain "negotiate". */
+  skill?: string;
 }
 
 /** What we ask for in a quote's quality terms; an SDK agent refuses a request without any. */
@@ -88,14 +90,16 @@ export function findData(v: unknown, has: (o: Record<string, unknown>) => boolea
 }
 
 /** The seller's A2A endpoint, from its agent card, when the card says it sells through escrow, and whether it wants telling. */
-export async function escrowSeller(services: { name?: string; endpoint?: string }[]): Promise<{ url: string; notify: boolean } | null> {
+export async function escrowSeller(services: { name?: string; endpoint?: string }[]): Promise<{ url: string; notify: boolean; skill: string } | null> {
   const a2a = services.find((s) => /^a2a$/i.test(s.name ?? "") && /^https:/i.test(s.endpoint ?? ""))?.endpoint;
   if (!a2a) return null;
   const listed = services.find((s) => /agent.?card/i.test(s.name ?? "") && /^https:/i.test(s.endpoint ?? ""))?.endpoint;
   const origin = new URL(a2a).origin;
   // Some cards list the agent card itself as the A2A service.
   const isCard = /\/\.well-known\/agent(-card)?\.json$/i.test(a2a);
-  const tries = [listed, isCard ? a2a : null, `${origin}/.well-known/agent-card.json`, `${a2a.replace(/\/$/, "")}/.well-known/agent-card.json`].filter(Boolean) as string[];
+  // The agent's own card before its host's: one host can serve several agents, each under its own path.
+  const tries = [listed, isCard ? a2a : null, `${a2a.replace(/\/$/, "")}/.well-known/agent-card.json`, `${origin}/.well-known/agent-card.json`].filter(Boolean) as string[];
+  let read = false;
   for (const url of tries) {
     const res = await safeFetch(url, { timeoutMs: TIMEOUT, headers: { accept: "application/json" } }).catch(() => null);
     if (!res || res.status !== 200) continue;
@@ -105,14 +109,21 @@ export async function escrowSeller(services: { name?: string; endpoint?: string 
     } catch {
       continue;
     }
+    read = true;
     const skills = new Set((card.skills ?? []).map((s) => s.id));
-    if (!skills.has("negotiate")) return null;
+    // "negotiate-erc8183-job" is the id in BNB's SDK examples; agents on this registry also say "negotiate".
+    const skill = skills.has("negotiate-erc8183-job") ? "negotiate-erc8183-job" : skills.has("negotiate") ? "negotiate" : null;
+    if (!skill) {
+      if (isCard || url === listed) return null;
+      continue;
+    }
     // The card names its own endpoint; it must be https, and the one the registration lists wins a tie.
     const named = [card.url, ...(card.supportedInterfaces ?? []).map((i) => i.url)].find((u) => typeof u === "string" && /^https:/i.test(u));
     const endpoint = named ?? (isCard ? null : a2a);
-    return endpoint ? { url: endpoint, notify: skills.has("notify_funded") } : null;
+    return endpoint ? { url: endpoint, notify: skills.has("notify_funded"), skill } : null;
   }
-  // No card could be read: our failure, not a finding that it does not sell.
+  // Cards were read and none sells escrowed jobs: a finding. No card could be read: our failure, not a finding.
+  if (read) return null;
   throw new Error("no agent card could be read");
 }
 
@@ -122,13 +133,13 @@ export async function escrowSeller(services: { name?: string; endpoint?: string 
  * other wallet is refused, so a card pointed at someone else's server cannot
  * sell their work under its own name.
  */
-export async function negotiate(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean } = { signers: [] }): Promise<EscrowQuote> {
+export async function negotiate(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean; skill?: string } = { signers: [] }): Promise<EscrowQuote> {
   return (await negotiateFull(a2a, ask, opts)).quote;
 }
 
 /** The quote, and for an SDK seller the signed answer itself, which the job's description must carry. */
-export async function negotiateFull(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean }): Promise<{ quote: EscrowQuote; sdk: SdkQuote | null }> {
-  const result = await rpc(a2a, { skill: "negotiate", task_description: ask, description: ask, terms: { deliverables: ask, quality_standards: QUALITY } });
+export async function negotiateFull(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean; skill?: string }): Promise<{ quote: EscrowQuote; sdk: SdkQuote | null }> {
+  const result = await rpc(a2a, { skill: opts.skill ?? "negotiate", task_description: ask, description: ask, terms: { deliverables: ask, quality_standards: QUALITY } });
   const sdk = findData(result, (o) => isSdkQuote(o) && ("negotiation_hash" in o || (o.response as { accepted?: boolean })?.accepted === false)) as SdkQuote | null;
   if (!sdk) return { quote: { ...quoteFrom(result, a2a), kind: "simple", notify: opts.notify ?? true }, sdk: null };
   const checked = await checkSdkQuote(sdk, { chainId: 56, commerce: ESCROW.commerce, token: ESCROW.paymentToken, signers: opts.signers });

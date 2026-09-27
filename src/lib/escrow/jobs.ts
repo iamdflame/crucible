@@ -19,8 +19,9 @@
  * undelivered is taken off sale until it delivers again.
  */
 
-import { keccak256, parseEventLogs, stringToHex, toHex, type Address, type Hash, type Hex } from "viem";
-import { marketClient, walletFor } from "@/lib/chain/market";
+import { keccak256, parseEventLogs, stringToHex, toHex, type Address, type Hash, type Hex, type Log } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { logClients, marketClient, walletFor } from "@/lib/chain/market";
 import { sql as pg } from "@/lib/db/client";
 import { ensureTables } from "@/lib/db/tables";
 import { withLease } from "@/lib/db/lease";
@@ -28,10 +29,12 @@ import { REFERENCE, referenceRegistrations, type ReferenceAgent } from "@/lib/ho
 import { HOUSE_SERVICES } from "@/lib/house/services";
 import { SITE } from "@/lib/site";
 import { getProbes } from "@/lib/data/probes";
-import { warm } from "@/lib/data/snapshots";
-import { COMMERCE_ABI, ESCROW, JOB_STATUS, POLICY_ABI, ROUTER_ABI, VIA_HOST, type JobStatus } from "./contracts";
+import { snapshot, store, warm } from "@/lib/data/snapshots";
+import { scanLogs } from "@/lib/chain/logs";
+import { COMMERCE_ABI, ESCROW, HOUSE_BUDGET, JOB_FUNDED, JOB_STATUS, POLICY_ABI, ROUTER_ABI, VIA_HOST, type JobStatus } from "./contracts";
 import { notifyFunded } from "./a2a";
-import { isManifest, manifestHash, readSignedDescription } from "./sdk";
+import { isManifest, manifestFor, manifestHash, pyJson, readSignedDescription } from "./sdk";
+import { subjectOfTask } from "./seller";
 import { safeFetch } from "@/lib/net/safe-fetch";
 import { readRegistryEntry } from "@/lib/sources/registry";
 
@@ -105,6 +108,21 @@ export const providerFor = (slug: string) => [...providers().values()].find((p) 
 function providerKey(ref: ReferenceAgent): Hex | null {
   const raw = process.env[ref.keyEnv];
   return raw ? ((raw.startsWith("0x") ? raw : `0x${raw}`) as Hex) : null;
+}
+
+/**
+ * One of our agents' own wallet, to sign quotes in BNB's standard: the key
+ * that owns its ERC-8004 registration, which is also its on-chain agentWallet,
+ * the address an SDK buyer checks a quote against. Null where this deployment
+ * holds no key for it.
+ */
+export function houseSigner(slug: string): { address: Address; sign: (hash: Hex) => Promise<Hex> } | null {
+  const p = providerFor(slug);
+  const key = p ? providerKey(p.ref) : null;
+  if (!p || !key) return null;
+  const account = privateKeyToAccount(key);
+  if (account.address.toLowerCase() !== p.owner.toLowerCase()) return null;
+  return { address: account.address, sign: (hash) => account.signMessage({ message: hash }) };
 }
 
 type Row = {
@@ -422,7 +440,7 @@ export async function missedEscrowJobs(): Promise<Map<string, { jobId: string; a
 }
 
 /** The answer our agent gives for a job: its service's own run, about the job's subject. Canonical JSON, so its hash can be re-derived. */
-async function answerFor(row: EscrowJob): Promise<{ body: Record<string, unknown>; text: string; hash: Hex }> {
+async function answerFor(row: EscrowJob, manifest = false): Promise<{ body: Record<string, unknown>; text: string; hash: Hex }> {
   const service = HOUSE_SERVICES[row.slug];
   if (!service) throw new Error(`no service for ${row.slug}`);
   const subject = row.subject ?? row.client;
@@ -435,6 +453,15 @@ async function answerFor(row: EscrowJob): Promise<{ body: Record<string, unknown
     answer,
     deliveredAt: new Date().toISOString(),
   };
+  /*
+    A job in BNB's standard form is answered as its buyer's SDK reads it: a
+    DeliverableManifest v1 whose canonical JSON hashes to what we commit on
+    chain, served as that same text at the deliverable URL.
+  */
+  if (manifest) {
+    const m = manifestFor(BigInt(row.jobId), 56, { commerce: ESCROW.commerce, router: ESCROW.router, policy: ESCROW.policy }, JSON.stringify(body), "application/json", { agent: service.name, erc8004: Number(row.tokenId), site: SITE });
+    return { body, text: pyJson(m), hash: manifestHash(m) };
+  }
   const text = JSON.stringify(body);
   return { body, text, hash: keccak256(stringToHex(text)) };
 }
@@ -465,7 +492,8 @@ export async function deliver(jobId: string): Promise<string> {
     if (!p || !key) return "no key for this provider on this deployment";
 
     // The answer is kept before it is committed to, so the hash on chain always has a body behind it.
-    const a = row.deliverableHash && row.deliverable ? { text: row.deliverable, hash: row.deliverableHash as Hex } : await answerFor(row);
+    const signed = await readSignedDescription(job.description);
+    const a = row.deliverableHash && row.deliverable ? { text: row.deliverable, hash: row.deliverableHash as Hex } : await answerFor(row, Boolean(signed && "signer" in signed));
     if (!row.deliverableHash) {
       await pg!`update escrow_jobs set deliverable = ${a.text}, deliverable_hash = ${a.hash}, updated_at = now() where job_id = ${jobId}`;
     }
@@ -513,18 +541,108 @@ async function settle(jobId: string, windowSeconds: bigint): Promise<string> {
   return `${jobId}: settle ${receipt.status}, now ${after.status.toLowerCase()}`;
 }
 
+/**
+ * A job funded to one of our agents that nobody told us about. A buyer on
+ * BNB's SDK opens and funds the job and then waits for the agent to notice,
+ * as the standard has it; this is our agents noticing. The job is taken on
+ * only when it is ours and will pay: bound to the dispute policy our keeper
+ * settles through, holding at least our price, and, when it carries a signed
+ * quote, one this agent signed and that had not lapsed when it was funded, the
+ * checks the SDK's own agents make before they work.
+ */
+export async function recordFound(jobId: bigint, fundTx: Hash | null): Promise<string> {
+  if (!pg) return "no database";
+  await outsideColumns();
+  if (await jobRow(jobId.toString())) return "already recorded";
+  const job = await readJob(jobId);
+  fundTx ??= await fundTxOf(jobId);
+  const p = providers().get(job.provider.toLowerCase());
+  if (!p) return "not one of ours";
+  if (job.status !== "FUNDED" && job.status !== "SUBMITTED" && job.status !== "COMPLETED") return `it is ${job.status.toLowerCase()}`;
+  if (job.evaluator.toLowerCase() !== ESCROW.router.toLowerCase() || job.hook.toLowerCase() !== ESCROW.router.toLowerCase()) return "not bound to the dispute policy, so it could not be settled";
+  const signed = await readSignedDescription(job.description);
+  if (signed && "refused" in signed) return `its quote fails its own check: ${signed.refused}`;
+  let task = job.description;
+  if (signed) {
+    if (signed.signer.toLowerCase() !== p.owner.toLowerCase()) return "its quote was not signed by this agent";
+    if (job.budget < signed.price) return "it holds less than the signed price";
+    const expires = (JSON.parse(job.description) as { quote_expires_at?: number }).quote_expires_at;
+    if (typeof expires === "number" && fundTx) {
+      const receipt = await marketClient.getTransactionReceipt({ hash: fundTx }).catch(() => null);
+      const block = receipt ? await marketClient.getBlock({ blockNumber: receipt.blockNumber }).catch(() => null) : null;
+      if (block && BigInt(expires) <= block.timestamp) return "it was funded after its quote lapsed";
+    }
+    task = signed.task;
+  } else if (job.budget < HOUSE_BUDGET) {
+    return "it holds less than this agent's price";
+  }
+  const about = subjectOfTask(task, p.ref.slug) ?? job.client;
+  await pg`
+    insert into escrow_jobs (job_id, client, provider, slug, token_id, budget, subject, status, funded_tx, expired_at, submitted_at)
+    values (${jobId.toString()}, ${job.client.toLowerCase()}, ${job.provider.toLowerCase()}, ${p.ref.slug}, ${p.tokenId}, ${job.budget.toString()},
+            ${about}, ${job.status}, ${fundTx?.toLowerCase() ?? null}, ${Number(job.expiredAt)}, ${Number(job.submittedAt) || null})
+    on conflict (job_id) do nothing
+  `;
+  return "recorded";
+}
+
+/** The transaction that funded a job, from the kernel's event: the job id is an indexed topic, so each range is a cheap query. */
+async function fundTxOf(jobId: bigint): Promise<Hash | null> {
+  const head = await marketClient.getBlockNumber();
+  for (let to = head; to > head - 40_000n; to -= 2_000n) {
+    for (const client of logClients) {
+      const logs = await client.getLogs({ address: ESCROW.commerce, event: JOB_FUNDED, args: { jobId }, fromBlock: to - 1_999n, toBlock: to }).catch(() => null);
+      if (logs === null) continue;
+      if (logs[0]?.transactionHash) return logs[0].transactionHash;
+      break;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads the kernel's JobFunded events since the last pass and takes on every
+ * job funded to one of our agents. The block read up to is kept, and moved
+ * only past ranges every node answered, so a refused range is read again
+ * rather than taken as empty.
+ */
+export async function watchFunded(opts: { budgetMs: number }): Promise<string> {
+  if (!pg) return "no database";
+  const started = Date.now();
+  await warm(["escrow-watch"]);
+  const head = await marketClient.getBlockNumber();
+  const kept = snapshot<{ block: number }>("escrow-watch")?.payload?.block;
+  const from = kept ? BigInt(kept) + 1n : head - 2_000n;
+  if (from > head) return "up to date";
+  const to = head - from > 20_000n ? from + 20_000n : head;
+  const scan = await scanLogs<Log & { args: { jobId: bigint; provider: Address } }>({ address: ESCROW.commerce, event: JOB_FUNDED, fromBlock: from, toBlock: to, span: 1_999n });
+  if (!scan.complete) return `${scan.refused} of ${scan.ranges} ranges refused; read again next pass`;
+  const ours = scan.logs.filter((l) => providers().has(l.args.provider.toLowerCase()));
+  const done: string[] = [];
+  for (const l of ours) {
+    if (Date.now() - started > opts.budgetMs) return `${done.join("; ")}; out of time before block ${to}`;
+    const r = await recordFound(l.args.jobId, l.transactionHash ?? null).catch((e: Error) => `failed: ${e.message.split("\n")[0]}`);
+    done.push(`${l.args.jobId} ${r}`);
+    if (r === "recorded") done.push(`${l.args.jobId} ${await deliver(l.args.jobId.toString()).catch((e: Error) => `deliver failed: ${e.message.split("\n")[0]}`)}`);
+  }
+  await store("escrow-watch", { block: Number(to) });
+  return `blocks ${from}-${to}: ${done.join("; ") || "no new jobs for our agents"}`;
+}
+
 /** The scheduled pass: deliver anything funded and undelivered, settle anything past its window. */
 export async function sweepEscrow(opts: { budgetMs: number }): Promise<string> {
   if (!pg) return "no database";
   await outsideColumns();
   const started = Date.now();
+  // Jobs funded to our agents on chain by buyers who never came through this site.
+  const watched = await watchFunded({ budgetMs: Math.min(8_000, opts.budgetMs / 2) }).catch((e: Error) => `watch failed: ${e.message.split("\n")[0]}`);
   // A funded job past its deadline is the buyer's to reclaim; it no longer takes a slot here.
   const open = (await pg`
     select job_id, status from escrow_jobs
     where status = 'SUBMITTED' or (status = 'FUNDED' and (expired_at is null or expired_at > extract(epoch from now())::bigint))
     order by created_at asc limit 20
   `) as { job_id: string; status: string }[];
-  if (!open.length) return "no open jobs";
+  if (!open.length) return `watch: ${watched}; no open jobs`;
   const windowSeconds = await marketClient.readContract({ address: ESCROW.policy, abi: POLICY_ABI, functionName: "disputeWindow" });
   const done: string[] = [];
   for (const j of open) {
@@ -532,5 +650,5 @@ export async function sweepEscrow(opts: { budgetMs: number }): Promise<string> {
     const r = j.status === "FUNDED" ? await deliver(j.job_id).catch((e) => `failed: ${(e as Error).message.split("\n")[0]}`) : await settle(j.job_id, windowSeconds).catch((e) => `failed: ${(e as Error).message.split("\n")[0]}`);
     done.push(`${j.job_id} ${r}`);
   }
-  return done.join("; ");
+  return `watch: ${watched}; ${done.join("; ")}`;
 }
