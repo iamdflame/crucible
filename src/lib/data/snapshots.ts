@@ -67,7 +67,7 @@ export function snapshot<T = unknown>(name: SnapshotName): { payload: T; capture
  * Loads newer readings from the database. Safe to call on every render:
  * it does nothing more than once a minute per snapshot per instance.
  */
-export const DEFAULT_WARM: SnapshotName[] = ["probe", "assays", "census", "demo", "grid-window", "grid-state", "definition", "conformance"];
+export const DEFAULT_WARM: SnapshotName[] = ["probe", "assays", "census", "demo", "grid-window", "grid-state", "definition", "conformance", "requirements", "registry-tail", "status-checks"];
 
 const warming = new Map<SnapshotName, Promise<void>>();
 
