@@ -365,6 +365,30 @@ export async function tick(opts: { only?: string[]; force?: boolean; maxMs?: num
 }
 
 /**
+ * The after-response jobs that are due, the ones a customer waits on first:
+ * a funded job to deliver, a loan about to be liquidated, a leashed wallet,
+ * then everything else. Each is run in its own invocation (see the tick
+ * route): their budgets add up to minutes, and run one after another in the
+ * time one function has left, the later ones never ran at all.
+ */
+const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "pool-gap", "test-buys", "requirements", "conformance"];
+
+export async function dueAfterJobs(): Promise<string[]> {
+  const last = await lastRuns();
+  const rank = (n: string) => (AFTER_PRIORITY.includes(n) ? AFTER_PRIORITY.indexOf(n) : AFTER_PRIORITY.length);
+  return JOBS.filter((j) => j.afterResponse)
+    .filter((j) => {
+      const at = last.get(j.name)?.at;
+      return !at || Date.now() - new Date(at).getTime() >= j.everyMinutes * 60_000;
+    })
+    .map((j) => j.name)
+    .sort((a, b) => rank(a) - rank(b));
+}
+
+/** One job's budget, for the lease that keeps two invocations from running it at once. */
+export const budgetOf = (name: string): number | null => JOBS.find((j) => j.name === name)?.budgetMs ?? null;
+
+/**
  * The jobs that run after the tick has answered, each if due, one after another.
  * Called from the tick route inside `after()`, so the pinger never waits on them.
  */

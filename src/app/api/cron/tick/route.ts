@@ -12,7 +12,9 @@
  */
 
 import { NextResponse, after } from "next/server";
-import { scheduleState, tick, tickAfter } from "@/lib/ops/schedule";
+import { budgetOf, dueAfterJobs, scheduleState, tick } from "@/lib/ops/schedule";
+import { withLease } from "@/lib/db/lease";
+import { SITE } from "@/lib/site";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,9 +37,29 @@ export async function GET(request: Request) {
   const only = url.searchParams.getAll("job");
   // The pinger's own timeout, so a call is never cut off mid-job.
   const maxMs = Math.min(50_000, Math.max(5_000, Number(url.searchParams.get("maxMs")) || 22_000));
-  const ran = await tick({ only: only.length ? only : undefined, force: url.searchParams.get("force") === "1", maxMs });
-  // Long reads go after the reply, in the time the function has left.
-  if (!only.length) after(() => tickAfter().catch(() => undefined));
+  const force = url.searchParams.get("force") === "1";
+  // One named job runs in this invocation, under a lease, so a second tick arriving meanwhile does not run it twice.
+  const ran =
+    only.length === 1 && budgetOf(only[0]!) !== null
+      ? ((await withLease(`tick:${only[0]}`, Math.ceil(budgetOf(only[0]!)! / 1000) + 15, () => tick({ only, force, maxMs }))) ?? [
+          { job: only[0]!, ok: true, ms: 0, detail: null, skipped: "already running" },
+        ])
+      : await tick({ only: only.length ? only : undefined, force, maxMs });
+  /*
+    The after-response jobs, each in its own invocation with its own 60
+    seconds, the ones a customer waits on first. A function goes on running
+    when its caller stops waiting, so this only waits long enough to start them.
+  */
+  if (!only.length) {
+    after(async () => {
+      const due = await dueAfterJobs().catch(() => [] as string[]);
+      await Promise.allSettled(
+        due.map((name) =>
+          fetch(`${SITE}/api/cron/tick?job=${encodeURIComponent(name)}`, { headers: { authorization: `Bearer ${secret}` }, cache: "no-store", signal: AbortSignal.timeout(4_000) }),
+        ),
+      );
+    });
+  }
   return NextResponse.json(
     { at: new Date().toISOString(), ran, schedule: await scheduleState() },
     { headers: { "cache-control": "no-store" } },
