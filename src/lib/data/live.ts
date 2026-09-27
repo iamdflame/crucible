@@ -11,6 +11,7 @@ import { scheduleRefresh } from "@/lib/census/refresh";
 import { warmRegistry } from "@/lib/registry/tail";
 import { warmOutcomes } from "@/lib/market/hire-law";
 import { withTimeout } from "@/lib/cache";
+import { keepClock } from "@/lib/ops/self-clock";
 
 /**
  * `names` adds to the defaults; it never replaces them. It used to replace
@@ -32,4 +33,6 @@ export async function live(names: SnapshotName[] = []): Promise<void> {
     9_000,
   );
   scheduleRefresh();
+  // If the outside pinger has gone quiet, a page served starts the scheduled work itself.
+  keepClock();
 }
