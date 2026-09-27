@@ -374,7 +374,9 @@ async function notifyOutside(row: EscrowJob & { sellerAnswer: string | null; sel
     await pg!`update escrow_jobs set note = ${`Telling the seller failed: ${told.error.slice(0, 160)}. Tried again in a few minutes.`}, updated_at = now() where job_id = ${row.jobId}`;
     return `seller not reached: ${told.error.slice(0, 80)}`;
   }
-  await pg!`update escrow_jobs set seller_answer = ${told.text!.slice(0, 200_000)}, seller_url = ${told.url}, note = null, updated_at = now() where job_id = ${row.jobId}`;
+  // An SDK agent answers the notice with an acknowledgement; its work is read from its submission, not from this.
+  if (q.kind === "sdk") await pg!`update escrow_jobs set note = null, updated_at = now() where job_id = ${row.jobId}`;
+  else await pg!`update escrow_jobs set seller_answer = ${told.text!.slice(0, 200_000)}, seller_url = ${told.url}, note = null, updated_at = now() where job_id = ${row.jobId}`;
   // Some sellers submit before they answer; read the kernel once more.
   const after = await readJob(BigInt(row.jobId));
   if (after.status !== "FUNDED") {

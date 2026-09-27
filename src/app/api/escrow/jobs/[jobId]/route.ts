@@ -6,7 +6,8 @@
 
 import { CHAIN_ID } from "@/lib/config";
 import { fail, gate, ok } from "@/lib/api/respond";
-import { deliverableUrl, jobRow, readJob } from "@/lib/escrow/jobs";
+import { after } from "next/server";
+import { deliver, deliverableUrl, jobRow, readJob } from "@/lib/escrow/jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
   if (!/^\d{1,12}$/.test(jobId)) return fail(400, "jobId must be the kernel's job number.", CHAIN_ID, g.headers);
   const [row, chain] = await Promise.all([jobRow(jobId), readJob(BigInt(jobId)).catch(() => null)]);
   if (!chain) return fail(503, "The escrow could not be read just now.", CHAIN_ID, g.headers);
+  // An outside agent has delivered but its delivery is not read yet: read it now, after answering, rather than on the next sweep.
+  if (row?.outside && !row.sellerVerified && (chain.status === "SUBMITTED" || chain.status === "COMPLETED")) {
+    after(() => deliver(jobId).then(() => undefined, () => undefined));
+  }
   const { deliverable: _body, sellerAnswer, sellerVerified, ...kept } = row ?? { deliverable: null, sellerAnswer: null, sellerVerified: null };
   return ok(
     {

@@ -76,7 +76,7 @@ export default function EscrowHire({
     accepted: bigint | null;
   }>({ id: null, expiredAt: null, steps: new Set(), quote: null, accepted: null });
   const [error, setError] = useState<string | null>(null);
-  const [job, setJob] = useState<{ status: string; deliverableUrl: string | null; submitTx?: string | null; answer?: unknown } | null>(null);
+  const [job, setJob] = useState<{ status: string; deliverableUrl: string | null; submitTx?: string | null; answer?: unknown; verified?: boolean | null } | null>(null);
   const [fundTx, setFundTx] = useState<Hash | null>(null);
 
   useEffect(() => {
@@ -101,9 +101,10 @@ export default function EscrowHire({
       const r = await fetch(`/api/escrow/jobs/${id}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null);
       const d = r?.data;
       if (d) {
-        setJob({ status: d.status, deliverableUrl: d.deliverableUrl, submitTx: d.record?.submitTx ?? null, answer: d.sellerAnswer ?? null });
+        setJob({ status: d.status, deliverableUrl: d.deliverableUrl, submitTx: d.record?.submitTx ?? null, answer: d.sellerAnswer ?? null, verified: d.sellerVerified ?? null });
         // An outside seller can submit before its answer reaches us; wait for both.
-        if (d.status !== "FUNDED" && (!outside || d.sellerAnswer || i > 12)) return;
+        // An outside agent's answer counts once it is verified against its on-chain hash, or after two minutes of trying.
+        if (d.status !== "FUNDED" && (!outside || d.sellerVerified || (d.sellerAnswer && i > 24))) return;
       }
       await new Promise((ok) => setTimeout(ok, 5_000));
     }
@@ -308,7 +309,10 @@ export default function EscrowHire({
           ) : null}
           {job?.answer ? (
             <details className="x-hire__adv" open={delivered}>
-              <summary>What {offer.name} sent back</summary>
+              <summary>
+                What {offer.name} delivered
+                {job.verified ? " · matches the hash it committed on chain" : ""}
+              </summary>
               <pre className="x-pre">{JSON.stringify(job.answer, null, 2).slice(0, 6000)}</pre>
             </details>
           ) : null}
