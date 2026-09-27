@@ -6,7 +6,8 @@ import { formatEther } from "viem";
 import CategoryMark from "@/components/v2/marks/CategoryMark";
 import { CATEGORIES, CATEGORY_LABEL } from "@/lib/config";
 import { marketChain } from "@/lib/chain/market";
-import { useWallet, sendMarketTx, type TxState } from "@/lib/chain/wallet";
+import { useWallet, sendMarketTx, CANONICAL_TARGET, type TxState } from "@/lib/chain/wallet";
+import { marketClient } from "@/lib/chain/market";
 import type { MarketMandate, MarketBid } from "@/lib/market/market-state";
 
 /**
@@ -53,6 +54,19 @@ export default function Dashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // What the contract holds for this wallet, so a withdraw button is offered only when there is something to withdraw.
+  const [owed, setOwed] = useState<bigint | null>(null);
+  const readOwed = useCallback(async () => {
+    if (!address) return setOwed(null);
+    const v = await marketClient
+      .readContract({ address: CANONICAL_TARGET.address, abi: CANONICAL_TARGET.abi, functionName: "withdrawable", args: [NATIVE, address] } as never)
+      .catch(() => null);
+    setOwed(typeof v === "bigint" ? v : null);
+  }, [address]);
+  useEffect(() => {
+    void readOwed();
+  }, [readOwed, rows]);
 
   const mine = useMemo(() => {
     if (!rows || !address) return null;
@@ -365,7 +379,7 @@ export default function Dashboard() {
               </div>
             ) : null}
 
-            {m.canonical && m.state >= 2 ? (
+            {m.canonical && m.state >= 2 && owed !== 0n ? (
               <div className="m-job__act">
                 <p className="m-small">
                   This job is over. Anything owed to you is held in the contract until
@@ -393,9 +407,13 @@ export default function Dashboard() {
           the contract rather than pushed to your wallet, so a failing transfer can
           never strand it. This claims all of it in BNB.
         </p>
-        <button className="m-btn" type="button" onClick={() => void withdraw()}>
-          Withdraw →
-        </button>
+        {owed === 0n ? (
+          <p className="m-small">Nothing is owed to this wallet right now.</p>
+        ) : (
+          <button className="m-btn" type="button" onClick={() => void withdraw()}>
+            {owed ? `Withdraw ${bnb(owed.toString())} →` : "Withdraw →"}
+          </button>
+        )}
       </div>
     </div>
   );

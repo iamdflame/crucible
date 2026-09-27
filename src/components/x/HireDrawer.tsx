@@ -205,6 +205,8 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
       const r = await fetch("/api/try", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tokenId: offer.tokenId, inputs: sent }) });
       const j = await r.json();
       setTried(r.ok ? j.data : { free: false, error: j.error ?? "It could not be asked just now." });
+      // On a phone the answer opens below the fold; bring it up.
+      requestAnimationFrame(() => document.querySelector(".x-hire__try")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     } catch {
       setTried({ free: false, error: "It could not be asked just now." });
     } finally {
