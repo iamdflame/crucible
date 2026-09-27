@@ -88,6 +88,7 @@ export function offerFor(l: Listing): HireOffer {
           }
         : null,
     // An escrow-only seller asks in its quote; everyone else in its 402 or our code.
+    blanksOk: !perCall && outsideEscrow?.kind === "sdk" && (l.category === "grid-trading" || l.category === "yield-optimisation"),
     inputs: !perCall && outsideEscrow ? (outsideEscrow.kind === "sdk" ? standardInputs(l.category) : needsAsInputs(outsideEscrow.needs)) : inputsFor(l.tokenId, preview),
     job: jobRail
       ? {

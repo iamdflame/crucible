@@ -6921,7 +6921,7 @@ a.x-house__name:hover {
 
 .x-only {
   list-style: none;
-  margin: 0;
+  margin: var(--s-5) 0 0;
   padding: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6971,4 +6971,12 @@ a.x-house__name:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-3);
+}
+.x-hire__bad {
+  display: block;
+  font-size: var(--ts-2xs);
+  color: var(--c-err);
+}
+.x-input[aria-invalid] {
+  border-color: var(--c-err);
 }

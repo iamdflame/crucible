@@ -57,6 +57,8 @@ export interface HireOffer {
   };
   /** What the paid call needs from the buyer, as the agent declares it. */
   inputs: CallInput[];
+  /** Every input may be left blank: the agent is sent a sensible default for each. */
+  blanksOk?: boolean;
   /** A job in the escrow market, when it bids in it. */
   job: null | { href: string; can: string[]; caps: string[]; cannot: string[] };
   /** An ERC-8183 escrowed job: our own agents, and outside sellers that price one over A2A. */
@@ -120,7 +122,16 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
   // Required inputs, or for an agent that takes one of several (a wallet or a position), at least one.
   const needed = offer.inputs.filter((i) => i.required);
   const filled = (i: CallInput) => Boolean(values[i.name]?.trim());
-  const inputsReady = offer.inputs.length === 0 || (needed.length ? needed.every(filled) : offer.inputs.some(filled));
+  // A wallet or position that cannot be one is caught here, before anybody pays for an answer about it.
+  const wrong = (i: CallInput): string | null => {
+    const v = values[i.name]?.trim();
+    if (!v) return null;
+    if (i.kind === "wallet" && !/^0x[0-9a-fA-F]{40}$/.test(v)) return "A wallet address is 0x followed by 40 letters and digits.";
+    if (i.kind === "position" && !/^\d{1,12}$/.test(v)) return "A position id is a number, e.g. 7546488.";
+    return null;
+  };
+  const inputsReady =
+    !offer.inputs.some(wrong) && (offer.inputs.length === 0 || (needed.length ? needed.every(filled) : offer.blanksOk || offer.inputs.some(filled)));
   // Stable between renders, so the payment engine does not re-ask the seller for a price each time.
   const sent = useMemo(
     () => Object.fromEntries(Object.entries(values).filter(([k, v]) => v.trim() && offer.inputs.some((i) => i.name === k))),
@@ -339,10 +350,12 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
                   inputMode={i.kind === "position" ? "numeric" : undefined}
                   autoComplete="off"
                   spellCheck={false}
+                  aria-invalid={wrong(i) ? true : undefined}
                 />
+                {wrong(i) ? <span className="x-hire__bad">{wrong(i)}</span> : null}
               </label>
             ))}
-            {needed.length === 0 && offer.inputs.length > 1 ? <p className="x-hire__sub">Fill in one of these.</p> : null}
+            {needed.length === 0 && offer.inputs.length > 1 && !offer.blanksOk ? <p className="x-hire__sub">Fill in one of these.</p> : null}
           </fieldset>
         ) : null}
 
