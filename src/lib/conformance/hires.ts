@@ -27,6 +27,7 @@ import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, outsideDescription, POLICY_ABI,
 import { deliver, recordFunded } from "@/lib/escrow/jobs";
 import { taskFor, gridTask } from "@/lib/escrow/task";
 import { poolNow } from "@/lib/house/services";
+import { errorOnly } from "@/lib/conformance/run";
 import { warm } from "@/lib/data/snapshots";
 import { warmRegistry } from "@/lib/registry/tail";
 import { warmOutcomes } from "@/lib/market/hire-law";
@@ -37,6 +38,8 @@ export const DAILY_CAP = 2n * U;
 /** One check never costs more than a dollar. */
 export const PER_HIRE = U;
 const EVERY_MS = 44 * 3_600_000;
+/** An agent whose last paid answer was only an error is not paid again for a week: the money bought nothing to check. */
+const AFTER_ERROR_MS = 7 * 86_400_000;
 /** Gas for the five steps with room to spare (job 56802 used 0.0000376 BNB at 0.05 gwei). */
 const GAS = 100_000_000_000_000n;
 
@@ -107,9 +110,12 @@ export async function testHires(opts: { budgetMs: number; dry?: boolean }): Prom
   const bought = calls.filter((c) => c.note?.startsWith("Daily test purchase") && Date.parse(c.at) > Date.now() - 86_400_000).reduce((s, c) => s + BigInt(c.amount ?? "0"), 0n);
   let spent = BigInt(row?.spent ?? "0") + bought;
 
-  const last = new Map(
-    ((await pg`select token_id, max(created_at) as at from escrow_jobs where client = ${me.toLowerCase()} group by token_id`) as { token_id: string; at: Date }[]).map((r) => [r.token_id, new Date(r.at).getTime()]),
-  );
+  const lastRows = (await pg`
+    select distinct on (token_id) token_id, created_at as at, seller_answer
+    from escrow_jobs where client = ${me.toLowerCase()} order by token_id, created_at desc
+  `) as { token_id: string; at: Date; seller_answer: string | null }[];
+  const last = new Map(lastRows.map((r) => [r.token_id, new Date(r.at).getTime()]));
+  const erred = new Set(lastRows.filter((r) => r.seller_answer && errorOnly(r.seller_answer)).map((r) => r.token_id));
   const { due, skipped } = candidates();
   const out = [...skipped];
   const pool = await poolNow().catch(() => null);
@@ -119,7 +125,12 @@ export async function testHires(opts: { budgetMs: number; dry?: boolean }): Prom
 
   for (const c of due) {
     if (Date.now() - started > opts.budgetMs) break;
-    if (Date.now() - (last.get(c.tokenId) ?? 0) < EVERY_MS) continue;
+    const since = Date.now() - (last.get(c.tokenId) ?? 0);
+    if (since < EVERY_MS) continue;
+    if (erred.has(c.tokenId) && since < AFTER_ERROR_MS) {
+      out.push(`#${c.tokenId}: its last paid answer was an error; tried again after a week`);
+      continue;
+    }
     const listed = BigInt(c.quote.price);
     if (spent + listed > DAILY_CAP) {
       out.push("daily cap reached");
