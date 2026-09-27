@@ -52,7 +52,9 @@ export function fillNeeds(needs: Record<string, string> | null, grid: { lower: n
   for (const [name, description] of Object.entries(needs ?? {})) {
     const optional = /optional|defaults? to/i.test(description);
     if (/address|wallet|account|owner/i.test(name)) out[name] = DEMO_ADDRESS;
-    else if (/^token$|pool/i.test(name)) out[name] = /pool/i.test(description) ? WBNB_USDT_POOL : WBNB;
+    // WBNB itself, even where a pool would do: named the WBNB/USDT pool, a seller may plan for its USDT side instead.
+    else if (/^token$/i.test(name)) out[name] = WBNB;
+    else if (/pool/i.test(name)) out[name] = WBNB_USDT_POOL;
     else if (/levels?/i.test(name)) out[name] = "10";
     else if (/band/i.test(name)) out[name] = "8";
     else if (/capital|amount/i.test(name)) out[name] = "1000";

@@ -64,7 +64,10 @@ export function errorOnly(answer: unknown): string | null {
   if (!d || typeof d !== "object" || Array.isArray(d)) return null;
   const keys = Object.keys(d);
   const e = d.error ?? d.message;
-  return typeof e === "string" && keys.every((k) => /^(error|message|hint|skills|need|code|detail)$/i.test(k)) ? e.slice(0, 160) : null;
+  if (typeof e !== "string") return null;
+  // An answer that says it failed ({"ok": false, "error": …}) is an error whatever else it carries.
+  if (d.ok === false || d.success === false) return e.slice(0, 160);
+  return keys.every((k) => /^(error|message|hint|skills|need|code|detail|category)$/i.test(k)) ? e.slice(0, 160) : null;
 }
 
 /**
@@ -90,13 +93,27 @@ export async function refine(category: string, answer: unknown, subject: string 
   return ref;
 }
 
+/** The token a grid plan names as what it trades, when it names one. */
+export function gridToken(answer: unknown): string | null {
+  const d = asData(answer);
+  if (!d || typeof d !== "object") return null;
+  const m = JSON.stringify(d).match(/"token"\s*:\s*\{[^{}]*?"symbol"\s*:\s*"([A-Za-z0-9.$-]{1,12})"/);
+  return m?.[1] ?? null;
+}
+
 export function judge(category: string, answer: unknown, ref: Reference, opts: { aged?: boolean } = {}): Result {
   const err = errorOnly(answer);
   if (err) return { verdict: "unreadable", checks: [], note: `it answered with an error rather than the work: “${err}”` };
   if (category === "health-factor") return ref.hf === undefined ? { verdict: "not-comparable", checks: [], note: "Venus could not be read on this pass" } : checkHealth(answer, { hf: ref.hf }, opts);
   if (category === "rebalancing") return checkRange(answer, { positions: ref.positions }, opts);
   if (category === "yield-optimisation") return checkYield(answer, { venusUsdtAprPct: ref.venusUsdtAprPct });
-  if (category === "grid-trading") return ref.grid ? checkGrid(answer, ref.grid) : { verdict: "not-comparable", checks: [], note: "the pool could not be read on this pass" };
+  if (category === "grid-trading") {
+    if (!ref.grid) return { verdict: "not-comparable", checks: [], note: "the pool could not be read on this pass" };
+    // A plan for another token answers another question: ours is WBNB priced in USDT.
+    const planned = gridToken(answer);
+    if (planned && !/^W?BNB$/i.test(planned)) return { verdict: "not-comparable", checks: [], note: `its plan is for ${planned}, not WBNB, so its levels are not comparable with ours` };
+    return checkGrid(answer, ref.grid);
+  }
   return { verdict: "not-comparable", checks: [], note: "no check is defined for this job" };
 }
 
