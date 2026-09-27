@@ -153,9 +153,21 @@ const toJob = (r: Row): EscrowJob => ({
 let columns: Promise<void> | null = null;
 /** The columns outside sellers need, added once to a table created before them. Idempotent. */
 function outsideColumns(): Promise<void> {
+  /*
+    Read first, alter only when a column is missing. ALTER TABLE takes an
+    exclusive lock and every read of the table queues behind it while it
+    waits, so running it on each new instance could stall every escrow read on
+    the site behind one slow session. When it must run, it gives up after 3 s.
+  */
   columns ??= (async () => {
     await ensureTables();
-    await pg!`alter table escrow_jobs add column if not exists inputs text, add column if not exists seller_answer text, add column if not exists seller_url text, add column if not exists notified_at timestamptz, add column if not exists seller_verified boolean`;
+    const have = (await pg!`select column_name from information_schema.columns where table_name = 'escrow_jobs'`) as { column_name: string }[];
+    const names = new Set(have.map((c) => c.column_name));
+    if (["inputs", "seller_answer", "seller_url", "notified_at", "seller_verified"].every((c) => names.has(c))) return;
+    await pg!.begin(async (tx) => {
+      await tx`set local lock_timeout = '3s'`;
+      await tx`alter table escrow_jobs add column if not exists inputs text, add column if not exists seller_answer text, add column if not exists seller_url text, add column if not exists notified_at timestamptz, add column if not exists seller_verified boolean`;
+    });
   })().catch((e) => {
     columns = null;
     throw e;
