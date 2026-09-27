@@ -189,3 +189,21 @@ export async function notifyFunded(a2a: string, jobId: string, inputs: Record<st
   const url = text.match(/"(?:document_url|deliverable_url|result_url|url)"\s*:\s*"(https:\/\/[^"]{1,300})"/)?.[1] ?? null;
   return { text, url };
 }
+
+/** The free answer an agent on BNB's SDK gives over A2A to a plain text task. */
+export async function tryFree(a2a: string, task: string): Promise<unknown> {
+  const res = await safeFetch(a2a, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "message/send", params: { message: { role: "user", kind: "message", messageId: crypto.randomUUID(), parts: [{ kind: "text", text: task }] } } }),
+    timeoutMs: 20_000,
+    maxBytes: 256 * 1024,
+  });
+  const j = JSON.parse(res.text) as { result?: { artifacts?: { parts?: { kind?: string; text?: string; data?: unknown }[] }[]; parts?: { kind?: string; text?: string; data?: unknown }[] }; error?: { message?: string } };
+  if (j.error) throw new Error(j.error.message ?? "it answered with an error");
+  const parts = [...(j.result?.artifacts?.flatMap((a) => a.parts ?? []) ?? []), ...(j.result?.parts ?? [])];
+  const p = parts.find((x) => x.kind === "data" || x.kind === "text");
+  if (!p) throw new Error("its answer carried no text or data");
+  return p.kind === "data" ? p.data : p.text;
+}
+

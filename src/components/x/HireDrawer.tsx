@@ -184,6 +184,22 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
   const viaEscrow = Boolean(offer.escrow) && (mode === "escrow" || !offer.x402);
   const both = Boolean(offer.escrow && offer.x402);
   const escrowPrice = offer.escrow ? `${formatUnits(BigInt(offer.escrow.budget), 18)} $U` : null;
+  // An agent on BNB's SDK often answers a plain message free: the buyer can see its answer before paying.
+  const [trying, setTrying] = useState(false);
+  const [tried, setTried] = useState<{ free: boolean; answer?: unknown; reason?: string; error?: string } | null>(null);
+  const tryIt = async () => {
+    setTrying(true);
+    setTried(null);
+    try {
+      const r = await fetch("/api/try", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tokenId: offer.tokenId, inputs: sent }) });
+      const j = await r.json();
+      setTried(r.ok ? j.data : { free: false, error: j.error ?? "It could not be asked just now." });
+    } catch {
+      setTried({ free: false, error: "It could not be asked just now." });
+    } finally {
+      setTrying(false);
+    }
+  };
   const exact = offer.price.exact ?? offer.price.value ?? "the quoted price";
   const flowAt = FLOW.findIndex((f) => f.id === step);
 
@@ -328,6 +344,27 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
             ))}
             {needed.length === 0 && offer.inputs.length > 1 ? <p className="x-hire__sub">Fill in one of these.</p> : null}
           </fieldset>
+        ) : null}
+
+        {offer.escrow?.outside?.standard && viaEscrow ? (
+          <div className="x-hire__try">
+            <div className="x-hire__try-row">
+              <button type="button" className="x-btn x-btn--sm" onClick={() => void tryIt()} disabled={trying || !inputsReady}>
+                {trying ? "Asking it…" : "Try it free first"}
+              </button>
+              <span className="x-hire__sub">Runs your task on the agent&apos;s own server. Nothing is paid or signed.</span>
+            </div>
+            {tried ? (
+              tried.free ? (
+                <details className="x-hire__adv" open>
+                  <summary>Its free answer</summary>
+                  <pre className="x-pre">{typeof tried.answer === "string" ? tried.answer.slice(0, 4000) : JSON.stringify(tried.answer, null, 2).slice(0, 4000)}</pre>
+                </details>
+              ) : (
+                <p className="x-hire__sub">{tried.reason ?? tried.error}</p>
+              )
+            ) : null}
+          </div>
         ) : null}
 
         {offer.sponsored ? (

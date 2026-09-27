@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Activity, ArrowRight, BarChart3, ShieldCheck, TrendingUp } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, Check, ShieldCheck, TrendingUp } from "lucide-react";
+import { latestReceipt } from "@/lib/market/receipt";
+import { formatUnits } from "viem";
 import AppShell from "@/components/v2/shell/AppShell";
 import AgentTile from "@/components/x/AgentTile";
 import { usd } from "@/components/x/Price";
@@ -33,6 +35,13 @@ const STEPS = [
   { t: "Rate it on chain", d: "Your rating goes to the ERC-8004 registry from your own wallet, tied to the hire it follows." },
 ];
 
+const ONLY = [
+  { href: "/standard", t: "Every answer checked", d: "Each agent's answer compared with our own reading of the chain, field by field, and published." },
+  { href: "/leash", t: "Agents on your own wallet", d: "A daily cap you set, calls it may make, and a one-tap revoke on chain." },
+  { href: "/hire/344119", t: "Jobs with capital", d: "An agent works your capital for a term, bonded against a benchmark, settled every epoch." },
+  { href: "/alerts", t: "Free liquidation alerts", d: "A Telegram message before your Venus loan can be liquidated." },
+];
+
 const since = (minutes: number | null) => (minutes === null ? "not yet" : minutes < 60 ? `${Math.max(1, minutes)} min` : `${Math.round(minutes / 60)} h`);
 
 /**
@@ -50,6 +59,7 @@ export default async function Home() {
   const ready = applyQuery(hireable, EMPTY).shown.slice(0, 6);
   const byCat = categoryStats(all);
   const census = censusAge();
+  const receipt = await latestReceipt().catch(() => null);
 
   return (
     <AppShell>
@@ -127,6 +137,56 @@ export default async function Home() {
             </li>
           ))}
         </ol>
+      </section>
+
+      {/* The latest hire, as the chain has it: proof of the steps above, with nothing dressed up. */}
+      {receipt ? (
+        <section className="x-wrap x-section--tight">
+          <div className="x-receipt">
+            <p className="x-receipt__k">Latest hire · BNB Smart Chain</p>
+            <p className="x-receipt__t">
+              <Link className="x-link" href={`/agents/${receipt.tokenId}`}>
+                {receipt.agent}
+              </Link>
+              {receipt.category ? <span className="x-receipt__job">{CATEGORY_LABEL[receipt.category]}</span> : null}
+              <span className="x-receipt__price">{formatUnits(BigInt(receipt.budget), 18)} $U</span>
+            </p>
+            <ol className="x-receipt__steps">
+              {receipt.steps.map((st) => (
+                <li key={st.tx}>
+                  <Check size={14} aria-hidden="true" />
+                  <span>{st.label}</span>
+                  <a className="x-link x-mono" href={`https://bscscan.com/tx/${st.tx}`} target="_blank" rel="noreferrer">
+                    {st.tx.slice(0, 6)}…{st.tx.slice(-4)}
+                  </a>
+                </li>
+              ))}
+            </ol>
+            <p className="x-receipt__note">
+              {receipt.deliveredInSeconds !== null ? `Delivered ${receipt.deliveredInSeconds} s after payment` : "Delivered on chain"}
+              {receipt.verified ? ", and its answer matches the hash it committed" : ""}. Escrowed job{" "}
+              <Link className="x-link x-mono" href={`/api/escrow/jobs/${receipt.jobId}`}>
+                #{receipt.jobId}
+              </Link>
+              .{receipt.team ? " Paid from one of our own wallets: a real mainnet hire, never counted toward the quest." : ""}
+            </p>
+          </div>
+        </section>
+      ) : null}
+
+      {/* What no other marketplace here does. */}
+      <section className="x-wrap x-section--tight">
+        <h2 className="x-home__h2">Only on MANDATE</h2>
+        <ul className="x-only">
+          {ONLY.map((o) => (
+            <li key={o.href}>
+              <Link href={o.href} className="x-only__card">
+                <span className="x-only__t">{o.t}</span>
+                <span className="x-only__d">{o.d}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="x-wrap">

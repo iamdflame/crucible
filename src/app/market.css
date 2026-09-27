@@ -6861,3 +6861,114 @@ a.x-house__name:hover {
   color: var(--c-text-2);
   font-weight: 500;
 }
+
+/* ========================================================== receipt === */
+
+.x-receipt {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-5);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+}
+.x-receipt__k {
+  margin: 0;
+  font-size: var(--ts-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-2);
+}
+.x-receipt__t {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-size: var(--ts-lg);
+  font-weight: 600;
+}
+.x-receipt__job,
+.x-receipt__price {
+  font-size: var(--ts-sm);
+  font-weight: 500;
+  color: var(--c-text-2);
+}
+.x-receipt__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+}
+.x-receipt__steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--ts-sm);
+}
+.x-receipt__steps svg {
+  color: var(--c-accent);
+}
+.x-receipt__note {
+  margin: 0;
+  font-size: var(--ts-sm);
+  color: var(--c-text-2);
+}
+
+/* ============================================================= only === */
+
+.x-only {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+.x-only__card {
+  display: grid;
+  gap: var(--s-2);
+  height: 100%;
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-line);
+  text-decoration: none;
+  color: inherit;
+}
+.x-only__card:hover {
+  border-color: var(--c-accent-line);
+}
+.x-only__t {
+  font-weight: 600;
+  color: var(--c-text);
+}
+.x-only__d {
+  font-size: var(--ts-sm);
+  color: var(--c-text-2);
+}
+@media (max-width: 1023px) {
+  .x-only {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .x-only {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.x-hire__try {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  border: 1px dashed var(--c-line);
+}
+.x-hire__try-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}

@@ -22,7 +22,7 @@ import { listings, type Listing } from "@/lib/market/listing";
 import { hirePath } from "@/lib/market/hire-law";
 import { listPaidCalls } from "@/lib/market/paid-calls";
 import { gridTask, taskFor } from "@/lib/escrow/task";
-import { safeFetch } from "@/lib/net/safe-fetch";
+import { tryFree } from "@/lib/escrow/a2a";
 import { withTimeout } from "@/lib/cache";
 import { store } from "@/lib/data/snapshots";
 import { asData, checkGrid, checkHealth, checkRange, checkYield, TOLERANCE, type Result } from "./checks";
@@ -97,23 +97,6 @@ export function judge(category: string, answer: unknown, ref: Reference, opts: {
   return { verdict: "not-comparable", checks: [], note: "no check is defined for this job" };
 }
 
-/** The free answer an agent on BNB's SDK gives over A2A to a plain text task. */
-async function askFree(a2a: string, task: string): Promise<unknown> {
-  const res = await safeFetch(a2a, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "message/send", params: { message: { role: "user", kind: "message", messageId: crypto.randomUUID(), parts: [{ kind: "text", text: task }] } } }),
-    timeoutMs: 20_000,
-    maxBytes: 256 * 1024,
-  });
-  const j = JSON.parse(res.text) as { result?: { artifacts?: { parts?: { kind?: string; text?: string; data?: unknown }[] }[]; parts?: { kind?: string; text?: string; data?: unknown }[] }; error?: { message?: string } };
-  if (j.error) throw new Error(j.error.message ?? "it answered with an error");
-  const parts = [...(j.result?.artifacts?.flatMap((a) => a.parts ?? []) ?? []), ...(j.result?.parts ?? [])];
-  const p = parts.find((x) => x.kind === "data" || x.kind === "text");
-  if (!p) throw new Error("its answer carried no text or data");
-  return p.kind === "data" ? p.data : p.text;
-}
-
 type Source = "our agent" | "free call" | "test purchase";
 
 /** Where this agent's answer comes from on this pass, and the answer. */
@@ -129,7 +112,7 @@ async function answerOf(l: Listing, ref: Reference, calls: Awaited<ReturnType<ty
     const task = l.category === "grid-trading" && ref.grid
       ? taskFor("grid-trading", l.name, { lower: String(ref.grid.lower), upper: String(ref.grid.upper), capital: String(ref.grid.capital) })
       : taskFor(l.category ?? null, l.name, { wallet: DEMO_ADDRESS as Address });
-    return { source: "free call", answer: await askFree(l.escrowQuote.a2a, task) };
+    return { source: "free call", answer: await tryFree(l.escrowQuote.a2a, task) };
   }
   // A pay-per-call seller: the answer to our last daily test purchase, when it was about the same account and recent.
   const last = calls.find((c) => c.tokenId === l.tokenId && c.paid && c.delivered);

@@ -29,7 +29,7 @@ export interface EscrowOffer {
   tokenId: string;
   name: string;
   /** Set for an outside seller that quoted over A2A; null for our own agents. */
-  outside: null | { service: string | null; serviceName: string | null; etaSeconds: number | null };
+  outside: null | { service: string | null; serviceName: string | null; etaSeconds: number | null; standard?: boolean };
 }
 
 /** Gas for all five steps with room to spare: they used 0.0000376 BNB at 0.05 gwei on job 56802. */
