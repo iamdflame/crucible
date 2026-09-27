@@ -50,7 +50,7 @@ export default async function JudgesPage() {
     withTimeout(registeredCount().catch(() => null), 6_000),
   ]);
   const rangerJob = (await strangerHiresLive().catch(() => [])).find((h) => h.tokenId === "269706") ?? null;
-  const paidMuster = (await listPaidCalls().catch(() => [])).find((c) => c.tokenId === "342377" && c.delivered && c.tx) ?? null;
+  const paidMuster = ((await withTimeout(listPaidCalls().catch(() => []), 6_000)) ?? []).find((c) => c.tokenId === "342377" && c.delivered && c.tx) ?? null;
   const ranger = listingFor("269706");
   const passkey = passkeyRecord();
   const out = diag?.findings.filter((f) => f.kind === "out-of-range").length ?? null;

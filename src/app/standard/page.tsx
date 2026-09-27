@@ -7,6 +7,7 @@ import { findAgent } from "@/lib/data/agents";
 import { latestConformance, type Latest } from "@/lib/conformance/run";
 import { TOLERANCE } from "@/lib/conformance/checks";
 import { DEMO_ADDRESS } from "@/lib/demo";
+import { withTimeout } from "@/lib/cache";
 
 export const metadata: Metadata = {
   title: "The MANDATE standard | MANDATE",
@@ -60,7 +61,7 @@ const WORD: Record<Latest["verdict"], string> = { pass: "Passed", fail: "Failed"
 
 export default async function StandardPage() {
   await live();
-  const all = [...(await latestConformance().catch(() => new Map<string, Latest>())).values()];
+  const all = [...((await withTimeout(latestConformance().catch(() => new Map<string, Latest>()), 6_000)) ?? new Map<string, Latest>()).values()];
   const passed = all.filter((r) => r.verdict === "pass").length;
   return (
     <AppShell>

@@ -33,6 +33,7 @@ import { indexToken } from "@/lib/registry/tail";
 import { listPaidCalls } from "@/lib/market/paid-calls";
 import { buriedFor, graveAnchor, graveyard } from "@/lib/market/graveyard";
 import { HOUSE_LEASHES } from "@/lib/chain/house";
+import { withTimeout } from "@/lib/cache";
 
 export const revalidate = 300;
 // Room for the census slice that runs after the response (see lib/census/refresh).
@@ -97,8 +98,8 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const { tokenId } = await params;
   const paidJobs = (await strangerHiresLive().catch(() => [])).filter((h) => h.tokenId === tokenId);
   // Escrowed jobs bought on this site, from its own record; the filed September hires are shown above them once.
-  const siteJobs = (await jobsOfAgent(tokenId).catch(() => [])).filter((j) => !paidJobs.some((h) => h.jobId === j.jobId));
-  const conf = (await latestConformance().catch(() => new Map<string, Latest>())).get(tokenId) ?? null;
+  const siteJobs = ((await withTimeout(jobsOfAgent(tokenId).catch(() => []), 6_000)) ?? []).filter((j) => !paidJobs.some((h) => h.jobId === j.jobId));
+  const conf = ((await withTimeout(latestConformance().catch(() => new Map<string, Latest>()), 6_000)) ?? new Map<string, Latest>()).get(tokenId) ?? null;
   await live();
   /*
     Every agent on the registry has a page, including one minted a minute ago
@@ -117,7 +118,7 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const slugOf = houseSlug(l.tokenId);
   const action = slugOf ? ((await houseActivity().catch(() => null))?.[slugOf]?.action ?? null) : null;
   const perf = performanceOf(l.tokenId, l.settled, action);
-  const ownCalls = (await listPaidCalls().catch(() => [])).filter((c) => c.tokenId === l.tokenId);
+  const ownCalls = ((await withTimeout(listPaidCalls().catch(() => []), 6_000)) ?? []).filter((c) => c.tokenId === l.tokenId);
   const calls = ownCalls.slice(0, 8);
   // Its own failure on record, if any; one of ours never counts against it.
   const grave = buriedFor(l.tokenId, graveyard(ownCalls, paidJobs));

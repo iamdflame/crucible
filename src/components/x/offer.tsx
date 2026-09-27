@@ -108,7 +108,7 @@ export function offerFor(l: Listing): HireOffer {
             budget: outsideEscrow.price,
             tokenId: l.tokenId,
             name: l.name,
-            outside: { service: outsideEscrow.service, serviceName: outsideEscrow.serviceName, etaSeconds: outsideEscrow.etaSeconds, standard: outsideEscrow.kind === "sdk" },
+            outside: { service: outsideEscrow.service, serviceName: outsideEscrow.serviceName, etaSeconds: outsideEscrow.etaSeconds, tryable: outsideEscrow.kind === "sdk" && l.checked?.verdict !== "unreadable" },
           }
         : null;
     })(),

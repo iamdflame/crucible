@@ -59,7 +59,7 @@
       "reportedAlphaBps": -568,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "20000000000000",
       "slashResolved": false,
       "slashContested": false
@@ -77,7 +77,7 @@
       "reportedAlphaBps": -182,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "0",
       "slashResolved": false,
       "slashContested": false
@@ -95,7 +95,7 @@
       "reportedAlphaBps": 0,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "0",
       "slashResolved": false,
       "slashContested": false
@@ -113,7 +113,7 @@
       "reportedAlphaBps": 0,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "0",
       "slashResolved": false,
       "slashContested": false
@@ -131,7 +131,7 @@
       "reportedAlphaBps": 1351,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "0",
       "slashResolved": false,
       "slashContested": false
@@ -149,7 +149,7 @@
       "reportedAlphaBps": -1,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "0",
       "slashResolved": false,
       "slashContested": false
@@ -167,7 +167,7 @@
       "reportedAlphaBps": -183,
       "correctedWei": null,
       "correctedAlphaBps": null,
-      "blockedBy": "no archive endpoint — pass --archive URL or set ARCHIVE_RPC_URL",
+      "blockedBy": "no archive endpoint, pass --archive URL or set ARCHIVE_RPC_URL",
       "slashWei": "0",
       "slashResolved": false,
       "slashContested": false

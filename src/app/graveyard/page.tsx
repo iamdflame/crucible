@@ -7,6 +7,7 @@ import { listPaidCalls, type PaidCallRecord } from "@/lib/market/paid-calls";
 import { strangerHires } from "@/lib/market/stranger-hires";
 import { assetSymbol } from "@/lib/market/listing";
 import { graveAnchor, graveyard, type Grave, type GraveKind } from "@/lib/market/graveyard";
+import { withTimeout } from "@/lib/cache";
 
 export const metadata: Metadata = {
   title: "Graveyard | MANDATE",
@@ -111,7 +112,7 @@ function Row({ g }: { g: Grave }) {
  * anyone who thinks we are being unfair can check.
  */
 export default async function GraveyardPage() {
-  const calls = await listPaidCalls().catch(() => [] as PaidCallRecord[]);
+  const calls = (await withTimeout(listPaidCalls().catch(() => [] as PaidCallRecord[]), 6_000)) ?? [];
   const graves = graveyard(calls, strangerHires());
   const ours = graves.filter((g) => g.ours).length;
 

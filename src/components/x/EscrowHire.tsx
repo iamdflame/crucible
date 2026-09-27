@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatUnits, parseEventLogs, type Address, type Hash } from "viem";
 import { Check, Loader2, X } from "lucide-react";
 import { marketClient } from "@/lib/chain/market";
-import { sendMarketTx, useWallet } from "@/lib/chain/wallet";
+import { fmtBnb, sendMarketTx, useWallet } from "@/lib/chain/wallet";
 import OpenInWallet from "./OpenInWallet";
 import RateAgent from "./RateAgent";
 import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, outsideDescription, POLICY_ABI, ROUTER_ABI, TOKEN_ABI, VIA } from "@/lib/escrow/contracts";
@@ -29,7 +29,7 @@ export interface EscrowOffer {
   tokenId: string;
   name: string;
   /** Set for an outside seller that quoted over A2A; null for our own agents. */
-  outside: null | { service: string | null; serviceName: string | null; etaSeconds: number | null; standard?: boolean };
+  outside: null | { service: string | null; serviceName: string | null; etaSeconds: number | null; /** Answers its task free before a job is paid for (BNB's standard, and our last check got an answer). */ tryable?: boolean };
 }
 
 /** Gas for all five steps with room to spare: they used 0.0000376 BNB at 0.05 gwei on job 56802. */
@@ -96,10 +96,31 @@ export default function EscrowHire({
 
   const outside = Boolean(offer.outside);
   // After funding, the job is read back until the agent's submission shows.
+  /*
+    The funded job, told to us so our agent delivers it and the desk shows it.
+    Retried: our node can be a block behind the buyer's wallet and answer that
+    the funding is not on chain yet, and a job we never hear about is one a
+    buyer paid for and waits on until it lapses.
+  */
+  const recordBody = useRef<string | null>(null);
+  const record = useCallback(async (): Promise<boolean> => {
+    if (!recordBody.current) return false;
+    for (let i = 0; i < 6; i++) {
+      const r = await fetch("/api/escrow/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: recordBody.current }).catch(() => null);
+      if (r?.ok) return true;
+      // A plain refusal will not change on a retry; not-found-yet, too-many and server errors can.
+      if (r && r.status >= 400 && r.status < 500 && r.status !== 404 && r.status !== 429) return false;
+      await new Promise((ok) => setTimeout(ok, 3_000));
+    }
+    return false;
+  }, []);
+
   const poll = useCallback(async (id: bigint) => {
     for (let i = 0; i < 60; i++) {
       const r = await fetch(`/api/escrow/jobs/${id}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null);
       const d = r?.data;
+      // Still not on our books half a minute on: tell us again.
+      if (d && !d.ours && i % 6 === 5) void record();
       if (d) {
         setJob({ status: d.status, deliverableUrl: d.deliverableUrl, submitTx: d.record?.submitTx ?? null, answer: d.sellerAnswer ?? null, verified: d.sellerVerified ?? null });
         // An outside seller can submit before its answer reaches us; wait for both.
@@ -108,7 +129,7 @@ export default function EscrowHire({
       }
       await new Promise((ok) => setTimeout(ok, 5_000));
     }
-  }, [outside]);
+  }, [outside, record]);
 
   const run = async () => {
     if (!address || disputeWindow === null) return;
@@ -191,11 +212,8 @@ export default function EscrowHire({
       const funded = await step(4, () => sendMarketTx(address, "fund", [id, cost, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
       setAt(5);
       setFundTx(funded);
-      await fetch("/api/escrow/jobs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(offer.outside ? { jobId: id.toString(), tx: funded, subject, tokenId: offer.tokenId, inputs } : { jobId: id.toString(), tx: funded, subject }),
-      });
+      recordBody.current = JSON.stringify(offer.outside ? { jobId: id.toString(), tx: funded, subject, tokenId: offer.tokenId, inputs } : { jobId: id.toString(), tx: funded, subject });
+      void record();
       void poll(id);
     } catch (e) {
       // A lapsed quote starts the job over, so the retry begins at step one.
@@ -271,14 +289,14 @@ export default function EscrowHire({
       {at < 0 ? (
         balance !== null && balance < budget ? (
           <p className="x-escrow__err">
-            This wallet holds {formatUnits(balance, 18)} $U; the job needs {short}.{" "}
+            This wallet holds {Number(Number(formatUnits(balance, 18)).toFixed(4))} $U; the job needs {short}.{" "}
             <a className="x-link" href={`https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${ESCROW.paymentToken}`} target="_blank" rel="noreferrer">
               Get $U on PancakeSwap
             </a>
           </p>
         ) : bnb !== null && bnb < GAS_FOR_FIVE ? (
           <p className="x-escrow__err">
-            This wallet holds {formatUnits(bnb, 18)} BNB. About 0.0001 BNB of gas covers the five steps; add a little BNB on BNB Smart Chain first.
+            This wallet holds {fmtBnb(bnb, 5)} BNB. About 0.0001 BNB of gas covers the five steps; add a little BNB on BNB Smart Chain first.
           </p>
         ) : (
           <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run} disabled={disputeWindow === null}>

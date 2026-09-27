@@ -10,6 +10,7 @@ import { DEFAULT_WARM, warm, type SnapshotName } from "@/lib/data/snapshots";
 import { scheduleRefresh } from "@/lib/census/refresh";
 import { warmRegistry } from "@/lib/registry/tail";
 import { warmOutcomes } from "@/lib/market/hire-law";
+import { withTimeout } from "@/lib/cache";
 
 /**
  * `names` adds to the defaults; it never replaces them. It used to replace
@@ -19,10 +20,16 @@ import { warmOutcomes } from "@/lib/market/hire-law";
 export async function live(names: SnapshotName[] = []): Promise<void> {
   // Agents minted since the committed crawl, read from the registry by the tail.
   // and every recorded paid call, so the hire law remembers a failure a visitor's own payment met.
-  await Promise.all([
-    warm([...new Set([...DEFAULT_WARM, ...names])]).catch(() => undefined),
-    warmRegistry().catch(() => undefined),
-    warmOutcomes().catch(() => undefined),
-  ]);
+  // Never longer than nine seconds: a database that stalls (a lock queued behind a
+  // migration did, 27 Sep 18:00) leaves the page on the last reading it holds,
+  // and the read finishes in the background, rather than every page timing out.
+  await withTimeout(
+    Promise.all([
+      warm([...new Set([...DEFAULT_WARM, ...names])]).catch(() => undefined),
+      warmRegistry().catch(() => undefined),
+      warmOutcomes().catch(() => undefined),
+    ]),
+    9_000,
+  );
   scheduleRefresh();
 }

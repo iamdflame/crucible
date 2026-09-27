@@ -10,6 +10,7 @@
 
 import { assayAgent } from "@/lib/assay";
 import { fail, gate, ok, preflight } from "@/lib/api/respond";
+import { withTimeout } from "@/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,9 +38,9 @@ export async function GET(
   try {
     // Twelve seconds, as the interactive path uses: a public caller should be
     // told the index is unreachable rather than held open while it retries.
-    const report = await assayAgent(chainId, tokenId, undefined, {
-      registryDeadlineMs: 12_000,
-    });
+    // And forty seconds in all: a slow node or endpoint is said so, before the platform's own limit cuts the answer off.
+    const report = await withTimeout(assayAgent(chainId, tokenId, undefined, { registryDeadlineMs: 12_000 }), 40_000);
+    if (!report) return fail(504, "The assay took longer than 40 seconds: the chain or the agent's endpoint is slow just now. Try again in a minute.", chainId, g.headers);
     return ok(
       {
         chainId: report.chainId,

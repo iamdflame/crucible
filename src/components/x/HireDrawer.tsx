@@ -359,7 +359,7 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
           </fieldset>
         ) : null}
 
-        {offer.escrow?.outside?.standard && viaEscrow ? (
+        {offer.escrow?.outside?.tryable && viaEscrow ? (
           <div className="x-hire__try">
             <div className="x-hire__try-row">
               <button type="button" className="x-btn x-btn--sm" onClick={() => void tryIt()} disabled={trying || !inputsReady}>

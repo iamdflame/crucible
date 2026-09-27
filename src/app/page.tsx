@@ -12,6 +12,7 @@ import { hireCounts } from "@/lib/market/hires";
 import { PRED, applyQuery, EMPTY, categoryStats } from "@/lib/market/catalogue";
 import { funnel } from "@/lib/market/funnel";
 import { live } from "@/lib/data/live";
+import { withTimeout } from "@/lib/cache";
 
 export const metadata: Metadata = {
   title: "MANDATE | BNB Smart Chain Agent Marketplace",
@@ -59,7 +60,7 @@ export default async function Home() {
   const ready = applyQuery(hireable, EMPTY).shown.slice(0, 6);
   const byCat = categoryStats(all);
   const census = censusAge();
-  const receipt = await latestReceipt().catch(() => null);
+  const receipt = await withTimeout(latestReceipt().catch(() => null), 6_000);
 
   return (
     <AppShell>

@@ -3723,7 +3723,9 @@ p code {
 /* ------------------------------------------------------------- public api */
 
 .api__list { display: flex; flex-direction: column; gap: 16px; }
-.api__path { text-transform: none; letter-spacing: 0.04em; color: var(--ink); }
+.api__path { text-transform: none; letter-spacing: 0.04em; color: var(--ink); overflow-wrap: anywhere; }
+.api__ep .panel__head { flex-wrap: wrap; gap: var(--s-1, 4px) var(--s-3, 12px); }
+.api__ep .panel__head h3 { min-width: 0; }
 .api__what { margin: 0 0 14px; max-width: 76ch; }
 .api__guarantees { margin-top: 20px; }
 

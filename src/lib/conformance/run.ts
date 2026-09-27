@@ -89,7 +89,7 @@ export async function refine(category: string, answer: unknown, subject: string 
 
 export function judge(category: string, answer: unknown, ref: Reference, opts: { aged?: boolean } = {}): Result {
   const err = errorOnly(answer);
-  if (err) return { verdict: "unreadable", checks: [], note: `it answered with an error rather than the work: ${err}` };
+  if (err) return { verdict: "unreadable", checks: [], note: `it answered with an error rather than the work: “${err}”` };
   if (category === "health-factor") return ref.hf === undefined ? { verdict: "not-comparable", checks: [], note: "Venus could not be read on this pass" } : checkHealth(answer, { hf: ref.hf }, opts);
   if (category === "rebalancing") return checkRange(answer, { positions: ref.positions }, opts);
   if (category === "yield-optimisation") return checkYield(answer, { venusUsdtAprPct: ref.venusUsdtAprPct });
