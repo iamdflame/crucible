@@ -70,7 +70,8 @@ const config: NextConfig = {
       ? [
           { source: "/", has: [{ type: "host" as const, value: legacy }], destination: `${site}/`, permanent: true },
           {
-            source: "/:path((?!house/|\\.well-known/|api/x402/).*)",
+            // api/cron/ stays too: the external pinger calls the old host, and a redirect across hosts drops its Authorization header (the clock stopped for 2.4 days, 25 Sep 13:05).
+            source: "/:path((?!house/|\\.well-known/|api/x402/|api/cron/).*)",
             has: [{ type: "host" as const, value: legacy }],
             destination: `${site}/:path`,
             permanent: true,

@@ -53,7 +53,9 @@ async function main() {
   const base = (await registration(uri)).services.find((s) => s.name === "A2A")?.endpoint;
   if (!base) throw new Error("no A2A endpoint registered");
   const cardUrl = new URL(base);
-  cardUrl.pathname = `${cardUrl.pathname.replace(/\/+$/, "")}/.well-known/agent-card.json`;
+  // The SDK's agentCardUrl: appended only when the endpoint is not the card already.
+  const path = cardUrl.pathname.replace(/\/+$/, "");
+  if (!path.endsWith("/.well-known/agent-card.json")) cardUrl.pathname = `${path}/.well-known/agent-card.json`;
   const card = (await (await fetch(cardUrl)).json()) as { url: string; skills: { id: string }[] };
   console.log(`${ref.name} (#${tokenId}): card ${cardUrl} → ${card.url}; skills ${card.skills.map((s) => s.id).join(", ")}`);
 
