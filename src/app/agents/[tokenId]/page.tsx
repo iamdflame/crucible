@@ -631,8 +631,8 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
               <>
                 <ol className="x-ad-how">
                   <li>
-                    <strong>You fund an escrowed job</strong> for exactly {escrowPrice}. Five transactions from your wallet; the $U sits in the ERC-8183 contract,
-                    not with {l.name} or with us.
+                    <strong>You fund an escrowed job</strong> for exactly {escrowPrice}. Five transactions from your wallet, or one confirmation where your wallet
+                    batches them; the $U sits in the ERC-8183 contract, not with {l.name} or with us.
                   </li>
                   <li>
                     <strong>{l.name} delivers on chain</strong>, usually within minutes. If nothing arrives before the deadline, you take the money back.
@@ -642,6 +642,15 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                   </li>
                 </ol>
                 {perCall ? <p className="x-ad-note">Or pay per call instead: one signature for {pp.value ?? "the price"}, answered at once.</p> : null}
+                {slug ? (
+                  <p className="x-ad-note">
+                    From your own agent: BNB&apos;s agent SDK hires it at{" "}
+                    <a className="x-link x-mono" href={`/a2a/${slug}/.well-known/agent-card.json`}>
+                      /a2a/{slug}
+                    </a>{" "}
+                    with <span className="x-mono">negotiate-erc8183-job</span>, a quote it signs with its registered wallet.
+                  </p>
+                ) : null}
               </>
             ) : verdict.ok && perCall ? (
               <ol className="x-ad-how">
