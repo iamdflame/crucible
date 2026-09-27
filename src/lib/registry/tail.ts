@@ -37,7 +37,12 @@ const ZERO_TOPIC = `0x${"0".repeat(64)}`;
 /** The block after the committed crawl's newest agent (Guard-1, #344123, minted at 121,195,867). */
 export const TAIL_START = 121_195_868;
 /** The free log provider that serves ranged queries caps them at 5,000 blocks. */
-const SPAN = 5_000;
+/*
+  2,000 blocks a read. The one free provider that serves ranges more than a few
+  hours old answers 2,000 in about a second but timed out on 5,000, and on 25
+  Sep the tail stalled there for two and a half days while no mint was read.
+*/
+const SPAN = 2_000;
 const RESOLVE_CONCURRENCY = 24;
 
 export interface Mint {

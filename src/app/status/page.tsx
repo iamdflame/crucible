@@ -28,7 +28,7 @@ export const maxDuration = 60;
 
 export default async function StatusPage() {
   await live();
-  const [checks, depth, late, rpcs, beats, who, boxes, up, schedule] = await Promise.all([
+  const [checks, depth, late, rpcs, beats, who, boxes, reqs, up, schedule] = await Promise.all([
     judgePathChecks(),
     withTimeout(hireableByCategory().catch(() => null), 8_000),
     withTimeout(overdueEpochs().catch(() => null), 8_000),
@@ -42,10 +42,13 @@ export default async function StatusPage() {
       and stores it; if nothing is stored yet the page says so.
     */
     Promise.resolve(snapshot<Box[]>("definition")),
+    Promise.resolve(snapshot<Box[]>("requirements")),
     withTimeout(uptime(14).catch(() => null), 6_000),
     withTimeout(scheduleState().catch(() => []), 6_000),
   ]);
   const definition = boxes?.payload ?? [];
+  const required = reqs?.payload ?? [];
+  const requiredScore = score(required);
   const definitionAt = boxes?.capturedAt ?? null;
   const done = score(definition);
   const probes = getProbes();
@@ -158,6 +161,47 @@ export default async function StatusPage() {
               ))}
             </ul>
           )}
+        </section>
+
+        {/* BNB's own requirements for Set and Earn, each worked out from what the site can read. */}
+        <section className="m-section--tight" id="requirements">
+          <div className="m-head">
+            <h2 className="m-h2">BNB&apos;s requirements</h2>
+            <p className="m-head__note">
+              {required.length
+                ? `${requiredScore.done} of ${requiredScore.total} met, ${requiredScore.partly} part way, ${requiredScore.open} not met, checked ${ageOf(reqs!.capturedAt)}.`
+                : "Not checked yet on this deployment."}{" "}
+              Each line quotes the Set and Earn requirements document and is worked out from our own pages, the registry, the chain and the
+              public repository. Also at <span className="m-mono">/api/requirements</span>.
+            </p>
+          </div>
+          {required.length ? (
+            <div className="m-scroll">
+              <table className="m-table">
+                <tbody>
+                  {required.map((b) => (
+                    <tr key={b.id}>
+                      <th style={{ width: "10rem" }}>
+                        <span className={b.state === "done" ? "m-ok" : b.state === "partly" ? "m-note" : "m-error"}>
+                          {b.state === "done" ? "met" : b.state === "partly" ? "part way" : "not met"}
+                        </span>
+                      </th>
+                      <td>
+                        {b.link ? (
+                          <Link className="m-link" href={b.link}>
+                            {b.claim}
+                          </Link>
+                        ) : (
+                          b.claim
+                        )}
+                        <div className="m-note">{b.detail}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </section>
 
         {/*

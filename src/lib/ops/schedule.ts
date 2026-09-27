@@ -23,13 +23,15 @@ import { sweepOurJobs, sweeperOn } from "@/lib/market/sweeper";
 import { renewHouseSessions } from "@/lib/chain/house";
 import { runHouse, HOUSE_CADENCE_MIN } from "@/lib/house/run";
 import { continuePoolGap } from "@/lib/pancake/pool-gap";
-import { tailRegistry } from "@/lib/registry/tail";
+import { tailRegistry, warmRegistry } from "@/lib/registry/tail";
 import { confirmPending } from "@/lib/market/confirm";
 import { sweepEscrow } from "@/lib/escrow/jobs";
 import { runLeashes } from "@/lib/leash/run";
 import { advanceEpochs } from "@/lib/market/epochs";
 import { testBuys } from "@/lib/market/test-buys";
 import { checkAlerts } from "@/lib/alerts/watch";
+import { requirements } from "@/lib/ops/requirements";
+import { warmOutcomes } from "@/lib/market/hire-law";
 
 export interface Job {
   name: string;
@@ -85,6 +87,20 @@ export const JOBS: Job[] = [
     run: async () => {
       const w = await readGridWindow({ fresh: true });
       return { fills: w.fills.length, toBlock: w.toBlock };
+    },
+  },
+  {
+    // BNB's Phase 2 requirements, each worked out from what the site can read, for /status and /api/requirements.
+    name: "requirements",
+    everyMinutes: 15,
+    budgetMs: 25_000,
+    afterResponse: true,
+    run: async () => {
+      await warmRegistry().catch(() => undefined);
+      await warmOutcomes().catch(() => undefined);
+      const boxes = await requirements();
+      if (boxes.length) await store("requirements", boxes);
+      return score(boxes);
     },
   },
   {

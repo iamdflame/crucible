@@ -147,6 +147,21 @@ async function main() {
     { name: "the identity registry and the escrow are listed", test: (h) => (/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432/i.test(h) && /0xEa4DAa3100A767e86FDed867729ae7446476EBA6/i.test(h)) || "a contract is missing" },
   ]);
   // The leash page offers both agents, and loads without the SDK until asked.
+  // BNB's requirements, as the scheduler last worked them out: every line met.
+  {
+    const r = await get("/api/requirements");
+    try {
+      const j = JSON.parse(r.text) as { data: { checkedAt: string | null; requirements: { id: string; state: string; detail: string }[] } };
+      const miss = j.data.requirements.filter((b) => b.state !== "done");
+      record(
+        "/api/requirements: every BNB requirement is met",
+        j.data.requirements.length > 0 && miss.length === 0,
+        j.data.requirements.length === 0 ? "not checked yet on this deployment" : miss.length ? miss.map((b) => `${b.id}: ${b.detail.slice(0, 90)}`).join("; ") : `${j.data.requirements.length} met, checked ${j.data.checkedAt}`,
+      );
+    } catch {
+      record("/api/requirements", false, `expected JSON, got ${r.status}`);
+    }
+  }
   await page("/alerts", [{ name: "the signup renders", test: (h) => h.includes("Liquidation alerts") && h.includes("How it works") }]);
   await page("/leash", [
     { name: "both agents can be leashed", test: (h) => (h.includes("Yield-1") && h.includes("Guard-1")) || "an agent is missing" },
