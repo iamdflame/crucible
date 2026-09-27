@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { sql as pg } from "@/lib/db/client";
 import { ensureTables } from "@/lib/db/tables";
 
-export type SnapshotName = "probe" | "agents" | "assays" | "census" | "demo" | "grid-window" | "grid-state" | "funnel" | "definition" | "pool-gap" | "pool-gap-progress" | "registry-tail" | "requirements" | "conformance" | "escrow-watch";
+export type SnapshotName = "probe" | "agents" | "assays" | "census" | "demo" | "grid-window" | "grid-state" | "funnel" | "definition" | "pool-gap" | "pool-gap-progress" | "registry-tail" | "requirements" | "conformance" | "escrow-watch" | "status-checks";
 
 interface Loaded {
   payload: unknown;

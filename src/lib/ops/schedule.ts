@@ -72,6 +72,8 @@ export const JOBS: Job[] = [
     run: async () => {
       const checks = await judgePathChecks();
       const samples = await recordStatus(checks);
+      // Kept whole for /status, which reads it rather than spending five seconds per visit asking again.
+      await store("status-checks", checks);
       return { ok: checks.every((c) => c.ok), beats: checks.length, samples };
     },
   },

@@ -27,9 +27,18 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export default async function StatusPage() {
-  await live();
+  await live(["status-checks"]);
+  let checkedAt = new Date().toISOString();
   const [checks, depth, late, rpcs, beats, who, boxes, reqs, up, schedule] = await Promise.all([
-    judgePathChecks(),
+    // The scheduled tick asks every five minutes and keeps the answer; asked here only when that is over ten minutes old.
+    (async () => {
+      const kept = snapshot<Awaited<ReturnType<typeof judgePathChecks>>>("status-checks");
+      if (kept && Date.now() - Date.parse(kept.capturedAt) < 10 * 60_000) {
+        checkedAt = kept.capturedAt;
+        return kept.payload;
+      }
+      return judgePathChecks();
+    })(),
     withTimeout(hireableByCategory().catch(() => null), 8_000),
     withTimeout(overdueEpochs().catch(() => null), 8_000),
     health(),
@@ -60,7 +69,8 @@ export default async function StatusPage() {
       <div className="m-wrap m-section--tight" style={{ paddingTop: "clamp(2rem,5vw,3.5rem)" }}>
         <h1 className="m-h1">{ok ? "Everything is working" : "Something is not working"}</h1>
         <p className="m-lede m-lede--wide" style={{ marginTop: "1rem", maxWidth: "62ch" }}>
-          Each check below reads what a page needs, from the chain and from our own services, right now. The same checks
+          Each check below reads what a page needs, from the chain and from our own services, every five minutes; these were read at{" "}
+          {new Date(checkedAt).toUTCString().slice(17, 22)} UTC. The same checks
           answer at{" "}
           <a className="m-link m-mono" href="/api/status">
             /api/status
