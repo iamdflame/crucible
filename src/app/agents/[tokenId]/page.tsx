@@ -346,7 +346,7 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
               ) : null}
               <p className="x-ad-src">
                 {conf
-                  ? `${conf.note ? `${conf.note}. ` : ""}${conf.source ? `Answer from ${conf.source === "our agent" ? "our own agent" : conf.source === "free call" ? "its free call" : "our test purchase"}, ` : ""}checked ${new Date(conf.at).toUTCString().slice(5, 22)} UTC${conf.block ? ` against block ${conf.block.toLocaleString("en-GB")}` : ""}. `
+                  ? `${conf.note ? `${conf.note}. ` : ""}${conf.source ? `Answer from ${conf.source === "our agent" ? "our own agent" : conf.source === "free call" ? "its free call" : conf.source === "test hire" ? "a job our paid check bought" : "our test purchase"}, ` : ""}checked ${new Date(conf.at).toUTCString().slice(5, 22)} UTC${conf.block ? ` against block ${conf.block.toLocaleString("en-GB")}` : ""}. `
                   : "Not checked yet. "}
                 We ask every agent in a job the same public question and compare its answer with our own reading of BNB Smart Chain, by code.{" "}
                 <Link className="x-link" href="/standard">

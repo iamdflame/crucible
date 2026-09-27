@@ -24,7 +24,10 @@ import { listPaidCalls } from "@/lib/market/paid-calls";
 import { gridTask, taskFor } from "@/lib/escrow/task";
 import { tryFree } from "@/lib/escrow/a2a";
 import { withTimeout } from "@/lib/cache";
-import { store } from "@/lib/data/snapshots";
+import { store, warm } from "@/lib/data/snapshots";
+import { warmRegistry } from "@/lib/registry/tail";
+import { warmOutcomes } from "@/lib/market/hire-law";
+import { privateKeyToAccount } from "viem/accounts";
 import { asData, checkGrid, checkHealth, checkRange, checkYield, TOLERANCE, type Result } from "./checks";
 
 export interface Reference {
@@ -97,10 +100,28 @@ export function judge(category: string, answer: unknown, ref: Reference, opts: {
   return { verdict: "not-comparable", checks: [], note: "no check is defined for this job" };
 }
 
-type Source = "our agent" | "free call" | "test purchase";
+type Source = "our agent" | "free call" | "test purchase" | "test hire";
+
+/**
+ * Answers our paid checks bought (lib/conformance/hires.ts): the latest
+ * delivered escrowed job per agent from the trial pool in the last three days,
+ * one whose answer matched the hash its seller committed first.
+ */
+async function testHireAnswers(): Promise<Map<string, { answer: unknown; subject: string | null; at: string }>> {
+  const raw = process.env.AGENT_A_KEY;
+  if (!raw || !pg) return new Map();
+  const pool = privateKeyToAccount((raw.startsWith("0x") ? raw : `0x${raw}`) as `0x${string}`).address.toLowerCase();
+  const rows = (await pg`
+    select distinct on (token_id) token_id, seller_answer, subject, coalesce(to_timestamp(submitted_at), created_at) as at
+    from escrow_jobs
+    where client = ${pool} and slug = '' and seller_answer is not null and created_at > now() - interval '3 days'
+    order by token_id, seller_verified desc nulls last, created_at desc
+  `.catch(() => [])) as { token_id: string; seller_answer: string; subject: string | null; at: Date }[];
+  return new Map(rows.map((r) => [r.token_id, { answer: asData(r.seller_answer) ?? r.seller_answer, subject: r.subject, at: new Date(r.at).toISOString() }]));
+}
 
 /** Where this agent's answer comes from on this pass, and the answer. */
-async function answerOf(l: Listing, ref: Reference, calls: Awaited<ReturnType<typeof listPaidCalls>>): Promise<{ source: Source; answer: unknown; subject?: string | null; at?: string } | { untested: string }> {
+async function answerOf(l: Listing, ref: Reference, calls: Awaited<ReturnType<typeof listPaidCalls>>, hired: Map<string, { answer: unknown; subject: string | null; at: string }>): Promise<{ source: Source; answer: unknown; subject?: string | null; at?: string } | { untested: string }> {
   const slug = houseSlug(l.tokenId);
   if (slug) {
     if (slug === "grid-1") return { untested: "Grid-1 reports its own trading window, not a plan for bounds it is given" };
@@ -108,6 +129,9 @@ async function answerOf(l: Listing, ref: Reference, calls: Awaited<ReturnType<ty
     if (!svc) return { untested: "no service on record" };
     return { source: "our agent", answer: await svc.run({ wallet: DEMO_ADDRESS }) };
   }
+  // A paid check's answer, when we bought one: it is the work itself, where a free call may only be an error.
+  const paid = hired.get(l.tokenId);
+  if (paid) return { source: "test hire", answer: paid.answer, subject: paid.subject, at: paid.at };
   if (l.escrowQuote?.kind === "sdk" && l.escrowQuote.a2a) {
     const task = l.category === "grid-trading" && ref.grid
       ? taskFor("grid-trading", l.name, { lower: String(ref.grid.lower), upper: String(ref.grid.upper), capital: String(ref.grid.capital) })
@@ -117,7 +141,10 @@ async function answerOf(l: Listing, ref: Reference, calls: Awaited<ReturnType<ty
   // A pay-per-call seller: the answer to our last daily test purchase, when it was about the same account and recent.
   const last = calls.find((c) => c.tokenId === l.tokenId && c.paid && c.delivered);
   if (last && Date.now() - Date.parse(last.at) < 3 * 86_400_000) return { source: "test purchase", answer: last.deliverable, subject: last.subject, at: last.at };
-  return { untested: l.escrowQuote ? "it sells only paid escrowed jobs, and has no free answer to test" : "no recent paid answer about the test account yet" };
+  if (l.escrowQuote?.service && !["health_factor", "yield_plan", "grid_plan"].includes(l.escrowQuote.service) && l.escrowQuote.kind !== "sdk") {
+    return { untested: `its ${l.escrowQuote.service.replace(/_/g, " ")} is work we do not read from the chain ourselves, so there is nothing to compare it with` };
+  }
+  return { untested: l.escrowQuote ? "it sells only paid escrowed jobs; our paid check has not bought its answer yet" : "no recent paid answer about the test account yet" };
 }
 
 /** One pass: the agents checked longest ago first, as many as the time allows. */
@@ -125,6 +152,9 @@ export async function runConformance(opts: { budgetMs: number }): Promise<string
   if (!pg) return "no database";
   await ensureTables();
   const started = Date.now();
+  // Its own invocation starts cold: the newest census, registry and paid calls first, not the committed files.
+  await Promise.all([warm().catch(() => undefined), warmRegistry().catch(() => undefined), warmOutcomes().catch(() => undefined)]);
+  const hired = await testHireAnswers();
   const hireable = listings().filter((l) => l.category && hirePath(l).ok);
   const lastRun = new Map(((await pg`select distinct on (token_id) token_id, at from conformance_runs order by token_id, at desc`) as { token_id: string; at: Date }[]).map((r) => [r.token_id, new Date(r.at).getTime()]));
   hireable.sort((a, b) => (lastRun.get(a.tokenId) ?? 0) - (lastRun.get(b.tokenId) ?? 0));
@@ -133,7 +163,7 @@ export async function runConformance(opts: { budgetMs: number }): Promise<string
   const done: string[] = [];
   for (const l of hireable) {
     if (Date.now() - started > opts.budgetMs) break;
-    const got = await withTimeout(answerOf(l, ref, calls).catch((e: Error) => ({ untested: `its answer could not be read: ${e.message.slice(0, 120)}` })), 25_000);
+    const got = await withTimeout(answerOf(l, ref, calls, hired).catch((e: Error) => ({ untested: `its answer could not be read: ${e.message.slice(0, 120)}` })), 25_000);
     const a = got ?? { untested: "it did not answer within 25 seconds" };
     const aged = !("untested" in a) && Boolean(a.at && Date.now() - Date.parse(a.at) > TOLERANCE.agedAfterMs);
     const result: Result = "untested" in a ? { verdict: "not-comparable", checks: [], note: a.untested } : judge(l.category!, a.answer, await refine(l.category!, a.answer, a.subject ?? null, ref), { aged });

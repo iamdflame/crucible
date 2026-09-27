@@ -13,6 +13,7 @@
  */
 
 import { lastRuns, note, recordStatus } from "@/lib/ops/history";
+import { testHires } from "@/lib/conformance/hires";
 import { refreshIfStale } from "@/lib/census/refresh";
 import { readGridWindow } from "@/lib/grid/window";
 import { judgePathChecks } from "@/lib/ops/status";
@@ -89,6 +90,14 @@ export const JOBS: Job[] = [
       const w = await readGridWindow({ fresh: true });
       return { fills: w.fills.length, toBlock: w.toBlock };
     },
+  },
+  {
+    // Paid checks: an agent that answers only a paid job is hired for one from the trial pool, within $2 a day, so its answer can be checked too.
+    name: "test-hires",
+    everyMinutes: 60,
+    budgetMs: 55_000,
+    afterResponse: true,
+    run: (budgetMs = 50_000) => testHires({ budgetMs }),
   },
   {
     // MANDATE's conformance checks: each hireable agent's answer against our own chain reading, oldest first.
@@ -371,7 +380,7 @@ export async function tick(opts: { only?: string[]; force?: boolean; maxMs?: num
  * route): their budgets add up to minutes, and run one after another in the
  * time one function has left, the later ones never ran at all.
  */
-const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "pool-gap", "test-buys", "requirements", "conformance"];
+const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "pool-gap", "test-buys", "test-hires", "requirements", "conformance"];
 
 export async function dueAfterJobs(): Promise<string[]> {
   const last = await lastRuns();
