@@ -18,6 +18,9 @@ describe("classify", () => {
     expect(on("Rebalancing concentrated liquidity positions").category).toBe("rebalancing");
     expect(on("A grid trading bot with laddered orders").category).toBe("grid-trading");
     expect(on("BSC Grid Planner: sizes a grid for any pool and states the break-even grid spacing").category).toBe("grid-trading");
+    expect(on("PancakeSwap V3 range health and bounded re-centre planning").category).toBe("rebalancing");
+    expect(on("Recenters PancakeSwap V3 positions that drifted out of range").category).toBe("rebalancing");
+    expect(on("the most recent yield figures, with APY").category).toBe("yield-optimisation");
     expect(on("Auto-compounding vault seeking the highest yield").category).toBe(
       "yield-optimisation",
     );

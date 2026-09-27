@@ -53,6 +53,11 @@ const SIGNALS: Record<Category, Signal[]> = {
     { phrase: "tick range", weight: 4 },
     { phrase: "liquidity provider", weight: 2 },
     { phrase: "v3 position", weight: 3 },
+    // Re-centring a drifted range is the rebalancing job, in either spelling.
+    { phrase: "re-centre", weight: 4 },
+    { phrase: "re-center", weight: 4 },
+    { phrase: "recentre", weight: 4 },
+    { phrase: "recenter", weight: 4 },
   ],
   "grid-trading": [
     { phrase: "grid trad", weight: 6 },
