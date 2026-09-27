@@ -15,6 +15,10 @@ import { NextResponse, after } from "next/server";
 import { budgetOf, dueAfterJobs, scheduleState, tick } from "@/lib/ops/schedule";
 import { withLease } from "@/lib/db/lease";
 import { SITE } from "@/lib/site";
+import { warm } from "@/lib/data/snapshots";
+import { warmRegistry } from "@/lib/registry/tail";
+import { warmOutcomes } from "@/lib/market/hire-law";
+import { withTimeout } from "@/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +37,13 @@ export async function GET(request: Request) {
       { status: 401, headers: { "cache-control": "no-store" } },
     );
   }
+
+  /*
+    Every job runs in a fresh invocation: the newest census, registry and
+    paid calls first. Without this each judged from the committed files, and
+    the requirements job saw no agent hireable at all.
+  */
+  await withTimeout(Promise.all([warm().catch(() => undefined), warmRegistry().catch(() => undefined), warmOutcomes().catch(() => undefined)]), 9_000);
 
   const only = url.searchParams.getAll("job");
   // The pinger's own timeout, so a call is never cut off mid-job.
