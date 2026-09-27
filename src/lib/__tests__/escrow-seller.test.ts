@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import reference from "./fixtures/sdk-negotiate-reference.json";
-import { checkSdkQuote, jobDescription, readSignedDescription, type SdkQuote } from "../escrow/sdk";
+import { checkSdkQuote, isManifest, jobDescription, manifestFor, manifestHash, pyJson, readSignedDescription, type SdkQuote } from "../escrow/sdk";
 import { quoteAsSeller, subjectOfTask, MAX_QUOTE_TTL, REASON } from "../escrow/seller";
 
 /**
@@ -70,5 +70,18 @@ describe("our agents as sellers in BNB's standard hire", () => {
     expect(subjectOfTask("Check position #7546488 for drift", "range-1")).toBe("7546488");
     expect(subjectOfTask("Check position #7546488 for drift", "guard-1")).toBeNull();
     expect(subjectOfTask("Best yield for 1000 USDT", "yield-1")).toBeNull();
+  });
+
+  it("serves a manifest that hashes, as a buyer re-reads it, to exactly what it commits on chain", () => {
+    const body = { answer: { healthFactor: 1.83, note: "café, ≥ 1.5 is safe" }, subject: "0x003911a1DD39D21de18A4A54A8af8692cB62A301" };
+    const m = manifestFor(56999n, 56, { commerce: COMMERCE, router: "0x51895229E12F9876011789B04f8698af06cCD6DA", policy: "0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5" }, JSON.stringify(body), "application/json", { agent: "Guard-1", erc8004: 344123 });
+    const served = pyJson(m);
+    const committed = manifestHash(m);
+    expect(committed).toBe(keccak256(stringToHex(served)));
+    const reread = JSON.parse(served) as unknown;
+    expect(isManifest(reread)).toBe(true);
+    expect(manifestHash(reread)).toBe(committed);
+    expect(JSON.parse((reread as { response: { content: string } }).response.content)).toEqual(body);
+    expect(/[^\x00-\x7f]/.test(served)).toBe(false);
   });
 });
