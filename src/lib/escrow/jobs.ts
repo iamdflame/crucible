@@ -31,6 +31,9 @@ import { getProbes } from "@/lib/data/probes";
 import { warm } from "@/lib/data/snapshots";
 import { COMMERCE_ABI, ESCROW, JOB_STATUS, POLICY_ABI, ROUTER_ABI, VIA_HOST, type JobStatus } from "./contracts";
 import { notifyFunded } from "./a2a";
+import { isManifest, manifestHash, readSignedDescription } from "./sdk";
+import { safeFetch } from "@/lib/net/safe-fetch";
+import { readRegistryEntry } from "@/lib/sources/registry";
 
 export interface EscrowJob {
   jobId: string;
@@ -152,7 +155,7 @@ let columns: Promise<void> | null = null;
 function outsideColumns(): Promise<void> {
   columns ??= (async () => {
     await ensureTables();
-    await pg!`alter table escrow_jobs add column if not exists inputs text, add column if not exists seller_answer text, add column if not exists seller_url text, add column if not exists notified_at timestamptz`;
+    await pg!`alter table escrow_jobs add column if not exists inputs text, add column if not exists seller_answer text, add column if not exists seller_url text, add column if not exists notified_at timestamptz, add column if not exists seller_verified boolean`;
   })().catch((e) => {
     columns = null;
     throw e;
@@ -161,11 +164,11 @@ function outsideColumns(): Promise<void> {
 }
 
 /** A recorded job, with the exact text our agent delivered, when it has. */
-export async function jobRow(jobId: string): Promise<(EscrowJob & { deliverable: string | null; sellerAnswer: string | null }) | null> {
+export async function jobRow(jobId: string): Promise<(EscrowJob & { deliverable: string | null; sellerAnswer: string | null; sellerVerified: boolean | null }) | null> {
   if (!pg) return null;
   await outsideColumns();
-  const [r] = (await pg`select * from escrow_jobs where job_id = ${jobId}`) as (Row & { deliverable: string | null; seller_answer?: string | null })[];
-  return r ? { ...toJob(r), deliverable: r.deliverable, sellerAnswer: r.seller_answer ?? null } : null;
+  const [r] = (await pg`select * from escrow_jobs where job_id = ${jobId}`) as (Row & { deliverable: string | null; seller_answer?: string | null; seller_verified?: boolean | null })[];
+  return r ? { ...toJob(r), deliverable: r.deliverable, sellerAnswer: r.seller_answer ?? null, sellerVerified: r.seller_verified ?? null } : null;
 }
 
 /** Every job funded here for one agent, newest first: its track record on this marketplace. */
@@ -237,12 +240,28 @@ export async function recordFunded(
  * dispute and reclaim), and opened here.
  */
 async function recordOutside(jobId: bigint, fundTx: Hash, job: OnChainJob, o: { tokenId: string; inputs: Record<string, string> }): Promise<{ job: EscrowJob } | { refused: string; status: number }> {
-  // The census this instance holds may predate the quote; read the newest.
-  await warm(["probe"]);
-  const q = getProbes().escrowQuotes?.[o.tokenId];
-  if (!q || q.unpayable) return { refused: "That agent has no escrow price on record here.", status: 400 };
-  if (q.provider.toLowerCase() !== job.provider.toLowerCase()) return { refused: "That job names a different provider from the one this agent's seller quoted.", status: 400 };
-  if (job.budget < BigInt(q.price)) return { refused: "That job holds less than the seller's price.", status: 400 };
+  /*
+    A job in BNB's standard form carries the agent's signed quote, and is
+    checked on that alone: the signer must be a wallet the agent's
+    registration names, the provider that signer, and the budget the signed
+    price. Any other job is checked against the price the census holds.
+  */
+  const signed = await readSignedDescription(job.description);
+  if (signed && "refused" in signed) return { refused: `That job's description fails its own check: ${signed.refused}.`, status: 400 };
+  if (signed) {
+    const entry = await readRegistryEntry(o.tokenId).catch(() => null);
+    const names = [entry?.owner, typeof entry?.card?.agentWallet === "string" ? entry.card.agentWallet : null].filter(Boolean).map((w) => String(w).toLowerCase());
+    if (!names.includes(signed.signer.toLowerCase())) return { refused: "That job's quote is signed by a wallet this agent's registration does not name.", status: 400 };
+    if (signed.signer.toLowerCase() !== job.provider.toLowerCase()) return { refused: "That job names a different provider from the wallet that signed its quote.", status: 400 };
+    if (job.budget < signed.price) return { refused: "That job holds less than the signed price.", status: 400 };
+  } else {
+    // The census this instance holds may predate the quote; read the newest.
+    await warm(["probe"]);
+    const q = getProbes().escrowQuotes?.[o.tokenId];
+    if (!q || q.unpayable) return { refused: "That agent has no escrow price on record here.", status: 400 };
+    if (q.provider.toLowerCase() !== job.provider.toLowerCase()) return { refused: "That job names a different provider from the one this agent's seller quoted.", status: 400 };
+    if (job.budget < BigInt(q.price)) return { refused: "That job holds less than the seller's price.", status: 400 };
+  }
   if (job.evaluator.toLowerCase() !== ESCROW.router.toLowerCase() || job.hook.toLowerCase() !== ESCROW.router.toLowerCase()) {
     return { refused: "That job is not bound to the escrow's dispute policy.", status: 400 };
   }
@@ -285,14 +304,58 @@ export async function submitTxOf(jobId: string, submittedAt: bigint): Promise<st
 }
 
 /**
- * Tells an outside seller its job is funded, at most every few minutes until
- * it submits, and brings our record up to what the kernel says.
+ * What an outside agent delivered, read from its own submission: the URL in
+ * the transaction's optParams, fetched, and checked against the hash the
+ * kernel holds. A DeliverableManifest (BNB's standard form) is checked by its
+ * canonical hash and shown by its content; anything else by its raw bytes.
  */
-async function notifyOutside(row: EscrowJob & { sellerAnswer: string | null }): Promise<string> {
+async function readDelivery(jobId: string, submittedAt: bigint, onChain: string): Promise<void> {
+  if (!submittedAt || /^0x0{64}$/.test(onChain)) return;
+  const txHash = await submitTxOf(jobId, submittedAt);
+  if (!txHash) return;
+  const tx = await marketClient.getTransaction({ hash: txHash as Hash }).catch(() => null);
+  if (!tx) return;
+  // The URL is plain UTF-8 inside the call data, whether the call went straight to the kernel or through a smart account.
+  const url = Buffer.from(tx.input.slice(2), "hex").toString("latin1").match(/"deliverable_url"\s*:\s*"(https:\/\/[^"\s]{1,400})"/)?.[1];
+  if (!url) return;
+  const res = await safeFetch(url, { timeoutMs: 10_000, maxBytes: 512 * 1024, headers: { accept: "application/json" } }).catch(() => null);
+  if (!res || res.status !== 200) {
+    await pg!`update escrow_jobs set seller_url = coalesce(seller_url, ${url}), updated_at = now() where job_id = ${jobId}`;
+    return;
+  }
+  let answer = res.text;
+  let verified = keccak256(stringToHex(res.text)).toLowerCase() === onChain.toLowerCase();
+  try {
+    const parsed = JSON.parse(res.text) as unknown;
+    if (isManifest(parsed)) {
+      verified = manifestHash(parsed).toLowerCase() === onChain.toLowerCase();
+      answer = parsed.response.content;
+    } else if (!verified) {
+      verified = manifestHash(parsed).toLowerCase() === onChain.toLowerCase();
+    }
+  } catch {
+    /* not JSON: the raw bytes stand */
+  }
+  // A verified delivery replaces whatever the seller said when told; an unverified one only fills a gap.
+  if (verified) {
+    await pg!`update escrow_jobs set seller_answer = ${answer.slice(0, 200_000)}, seller_url = ${url}, seller_verified = true, updated_at = now() where job_id = ${jobId}`;
+  } else {
+    await pg!`update escrow_jobs set seller_answer = coalesce(seller_answer, ${answer.slice(0, 200_000)}), seller_url = coalesce(seller_url, ${url}), seller_verified = false, updated_at = now() where job_id = ${jobId}`;
+  }
+}
+
+/**
+ * Tells an outside seller its job is funded, at most every few minutes until
+ * it submits, and brings our record up to what the kernel says. An agent on
+ * BNB's SDK watches the chain for funded jobs, so it is not told; its delivery
+ * is read from its submission once it lands.
+ */
+async function notifyOutside(row: EscrowJob & { sellerAnswer: string | null; sellerVerified: boolean | null }): Promise<string> {
   const job = await readJob(BigInt(row.jobId));
   if (job.status !== "FUNDED") {
     const submitTx = row.submitTx ?? (await submitTxOf(row.jobId, job.submittedAt));
     await pg!`update escrow_jobs set status = ${job.status}, submitted_at = ${Number(job.submittedAt) || null}, submit_tx = ${submitTx}, deliverable_hash = ${/^0x0{64}$/.test(job.deliverable) ? null : job.deliverable}, updated_at = now() where job_id = ${row.jobId}`;
+    if (!row.sellerVerified) await readDelivery(row.jobId, job.submittedAt, job.deliverable).catch(() => undefined);
     return `seller ${job.status.toLowerCase()}`;
   }
   if (BigInt(Math.floor(Date.now() / 1000)) >= job.expiredAt) {
@@ -304,6 +367,7 @@ async function notifyOutside(row: EscrowJob & { sellerAnswer: string | null }): 
   await warm(["probe"]);
   const q = getProbes().escrowQuotes?.[row.tokenId];
   if (!q) return "no seller endpoint on record";
+  if (q.notify === false) return "the seller watches the chain for funded jobs";
   await pg!`update escrow_jobs set notified_at = now() where job_id = ${row.jobId}`;
   const told = await notifyFunded(q.a2a, row.jobId, row.inputs ?? {}).catch((e: Error) => ({ text: null, url: null, error: e.message }));
   if ("error" in told) {
@@ -316,6 +380,7 @@ async function notifyOutside(row: EscrowJob & { sellerAnswer: string | null }): 
   if (after.status !== "FUNDED") {
     const submitTx = await submitTxOf(row.jobId, after.submittedAt);
     await pg!`update escrow_jobs set status = ${after.status}, submitted_at = ${Number(after.submittedAt) || null}, submit_tx = ${submitTx}, deliverable_hash = ${after.deliverable}, updated_at = now() where job_id = ${row.jobId}`;
+    await readDelivery(row.jobId, after.submittedAt, after.deliverable).catch(() => undefined);
     return `seller told; ${after.status.toLowerCase()}`;
   }
   return "seller told";
@@ -411,8 +476,9 @@ async function settle(jobId: string, windowSeconds: bigint): Promise<string> {
     await pg!`update escrow_jobs set status = ${job.status}, updated_at = now() where job_id = ${jobId}`;
     return `${jobId}: ${job.status.toLowerCase()}`;
   }
-  // An outside seller's submission is its own transaction; it is read from the kernel's event once.
-  const [known] = (await pg!`select submit_tx from escrow_jobs where job_id = ${jobId}`) as { submit_tx: string | null }[];
+  // An outside seller's submission is its own transaction; it is read from the kernel's event once, with its delivery.
+  const [known] = (await pg!`select submit_tx, slug, seller_verified from escrow_jobs where job_id = ${jobId}`) as { submit_tx: string | null; slug: string; seller_verified: boolean | null }[];
+  if (known && known.slug === "" && !known.seller_verified) await readDelivery(jobId, job.submittedAt, job.deliverable).catch(() => undefined);
   if (known && !known.submit_tx) {
     const found = await submitTxOf(jobId, job.submittedAt);
     if (found) await pg!`update escrow_jobs set submit_tx = ${found}, updated_at = now() where job_id = ${jobId}`;

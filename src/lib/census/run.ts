@@ -93,7 +93,7 @@ export async function runCensus(opts: CensusOptions): Promise<CensusRun> {
   if (opts.limit) agents = agents.slice(0, opts.limit);
   log(`${agents.length} agents to refresh`);
 
-  const targets: { tokenId: string; name: string; endpoint: string | null; unread: boolean; services: { name?: string; endpoint?: string }[] }[] = [];
+  const targets: { tokenId: string; name: string; endpoint: string | null; unread: boolean; services: { name?: string; endpoint?: string }[]; signers: string[] }[] = [];
   const queue = [...agents];
   await Promise.all(
     Array.from({ length: opts.resolveConcurrency ?? 8 }, async () => {
@@ -111,6 +111,8 @@ export async function runCensus(opts: CensusOptions): Promise<CensusRun> {
           endpoint: known ?? endpointFor(e),
           unread: unread && !known,
           services: e?.services ?? [],
+          // The wallets this agent's registration names: a signed quote must come from one of them.
+          signers: [e?.owner, typeof e?.card?.agentWallet === "string" ? e.card.agentWallet : null].filter((w): w is string => Boolean(w)),
         });
       }
     }),
@@ -182,7 +184,7 @@ export async function runCensus(opts: CensusOptions): Promise<CensusRun> {
       delete prevEscrow[t.tokenId];
       continue;
     }
-    const q = await negotiate(seller, t.name).catch(() => null);
+    const q = await negotiate(seller.url, t.name, { signers: t.signers, notify: seller.notify }).catch(() => null);
     if (q) prevEscrow[t.tokenId] = q;
   }
 

@@ -1,0 +1,31 @@
+{
+  "request": {
+    "task_description": "Grid plan for WBNB/USDT [test], 1000 USD capital, via mandatemarkets.com",
+    "terms": {
+      "deliverables": "grid levels and fee drag",
+      "quality_standards": "levels inside bounds",
+      "evaluation_required": true,
+      "evaluator_type": "uma_oov3"
+    }
+  },
+  "request_hash": "0xdfca868ee7efc72d8e5aa6b96b434a3b97097a2a784f2cd8a11e3741e65a4e26",
+  "response": {
+    "accepted": true,
+    "terms": {
+      "deliverables": "grid levels and fee drag",
+      "quality_standards": "levels inside bounds",
+      "evaluation_required": true,
+      "evaluator_type": "uma_oov3",
+      "price": "100000000000000000",
+      "currency": "0xcE24439F2D9C6a2289F741120FE202248B666666"
+    },
+    "estimated_completion_seconds": 600,
+    "quote_expires_at": 1790530013,
+    "negotiated_at": 1790529113
+  },
+  "response_hash": "0xf3582d67f53d1ad18273845d470eb9379a5cd6ec3f9101eb2e5d36615a10450a",
+  "negotiation_hash": "0xba46a8b9b13063fb031fa862da81abf78a8a6d92e3c7ed09dfda6e521cdc5602",
+  "provider_sig": "0xa86285ae681895656609c0c0570c66dc84c63e7968863a502e01784c55b751cb72e06c12cfae1cdf0610e6d3dd1fce72b6a20eda8cf48eed262701c2852155981b",
+  "chain_id": 56,
+  "verifying_contract": "0xea4daa3100a767e86fded867729ae7446476eba6"
+}

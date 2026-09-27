@@ -33,7 +33,8 @@ export interface HouseService {
 }
 
 const SLOT0 = parseAbi(["function slot0() view returns (uint160,int24,uint16,uint16,uint16,uint32,bool)"]);
-async function poolNow() {
+/** WBNB/USDT on PancakeSwap at this block: its tick and the price of one BNB in USDT. */
+export async function poolNow() {
   const [slot, block] = await Promise.all([
     bscClient().readContract({ address: WBNB_USDT_POOL, abi: SLOT0, functionName: "slot0" }),
     bscClient().getBlockNumber(),

@@ -13,11 +13,18 @@
  * keeps the quote only when it can be funded as it stands: in $U, on the same
  * kernel our escrow uses, on BNB Smart Chain. Every call goes through the
  * same guard as a probe, since the URL is whatever the registrant wrote.
+ *
+ * Two quote styles are in use. BNB's own agent SDK, which Agent Studio agents
+ * are built on, answers with a quote the agent signs (see ./sdk.ts); the
+ * provider is whoever signed it, and it must be a wallet the agent's
+ * registration names. Older sellers answer with a plain {provider, price}.
+ * One request carries the fields both read.
  */
 
 import { getAddress, isAddress, type Address } from "viem";
 import { safeFetch } from "@/lib/net/safe-fetch";
 import { ESCROW } from "./contracts";
+import { checkSdkQuote, isSdkQuote, type SdkQuote } from "./sdk";
 
 export interface EscrowQuote {
   /** The seller's A2A JSON-RPC endpoint: where the price came from and where a funded job is announced. */
@@ -35,7 +42,15 @@ export interface EscrowQuote {
   at: string;
   /** Why a buyer here cannot fund it as quoted, when they cannot. */
   unpayable: string | null;
+  /** "sdk": a signed quote in BNB's standard form, anchored in the job's description. "simple": a plain price. Absent on quotes taken before the SDK was read. */
+  kind?: "sdk" | "simple";
+  /** Whether the seller wants to be told a job is funded; SDK agents watch the chain instead. */
+  notify?: boolean;
 }
+
+/** What we ask for in a quote's quality terms; an SDK agent refuses a request without any. */
+const QUALITY = "Figures read from BNB Smart Chain at delivery, internally consistent, with their sources stated.";
+const NOBODY = "0x0000000000000000000000000000000000000000" as Address;
 
 const TIMEOUT = 12_000;
 
@@ -72,8 +87,8 @@ export function findData(v: unknown, has: (o: Record<string, unknown>) => boolea
   return null;
 }
 
-/** The seller's A2A endpoint, from its agent card, when the card says it sells through escrow. */
-export async function escrowSeller(services: { name?: string; endpoint?: string }[]): Promise<string | null> {
+/** The seller's A2A endpoint, from its agent card, when the card says it sells through escrow, and whether it wants telling. */
+export async function escrowSeller(services: { name?: string; endpoint?: string }[]): Promise<{ url: string; notify: boolean } | null> {
   const a2a = services.find((s) => /^a2a$/i.test(s.name ?? "") && /^https:/i.test(s.endpoint ?? ""))?.endpoint;
   if (!a2a) return null;
   const listed = services.find((s) => /agent.?card/i.test(s.name ?? "") && /^https:/i.test(s.endpoint ?? ""))?.endpoint;
@@ -91,18 +106,41 @@ export async function escrowSeller(services: { name?: string; endpoint?: string 
       continue;
     }
     const skills = new Set((card.skills ?? []).map((s) => s.id));
-    if (!skills.has("negotiate") || !skills.has("notify_funded")) return null;
+    if (!skills.has("negotiate")) return null;
     // The card names its own endpoint; it must be https, and the one the registration lists wins a tie.
     const named = [card.url, ...(card.supportedInterfaces ?? []).map((i) => i.url)].find((u) => typeof u === "string" && /^https:/i.test(u));
-    return named ?? (isCard ? null : a2a);
+    const endpoint = named ?? (isCard ? null : a2a);
+    return endpoint ? { url: endpoint, notify: skills.has("notify_funded") } : null;
   }
   // No card could be read: our failure, not a finding that it does not sell.
   throw new Error("no agent card could be read");
 }
 
-/** Asks the seller for its price for this agent's service, in its own words. */
-export async function negotiate(a2a: string, ask: string): Promise<EscrowQuote> {
-  return quoteFrom(await rpc(a2a, { skill: "negotiate", description: ask, terms: { deliverables: ask } }), a2a);
+/**
+ * Asks the seller for its price. `signers` are the wallets the agent's
+ * registration names (its owner, its agent wallet); a signed quote from any
+ * other wallet is refused, so a card pointed at someone else's server cannot
+ * sell their work under its own name.
+ */
+export async function negotiate(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean } = { signers: [] }): Promise<EscrowQuote> {
+  return (await negotiateFull(a2a, ask, opts)).quote;
+}
+
+/** The quote, and for an SDK seller the signed answer itself, which the job's description must carry. */
+export async function negotiateFull(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean }): Promise<{ quote: EscrowQuote; sdk: SdkQuote | null }> {
+  const result = await rpc(a2a, { skill: "negotiate", task_description: ask, description: ask, terms: { deliverables: ask, quality_standards: QUALITY } });
+  const sdk = findData(result, (o) => isSdkQuote(o) && ("negotiation_hash" in o || (o.response as { accepted?: boolean })?.accepted === false)) as SdkQuote | null;
+  if (!sdk) return { quote: { ...quoteFrom(result, a2a), kind: "simple", notify: opts.notify ?? true }, sdk: null };
+  const checked = await checkSdkQuote(sdk, { chainId: 56, commerce: ESCROW.commerce, token: ESCROW.paymentToken, signers: opts.signers });
+  const at = new Date().toISOString();
+  if ("refused" in checked) {
+    return { quote: { a2a, provider: NOBODY, price: "0", service: null, serviceName: null, needs: null, etaSeconds: null, at, unpayable: checked.refused, kind: "sdk", notify: opts.notify ?? false }, sdk };
+  }
+  const c = checked.ok;
+  return {
+    quote: { a2a, provider: c.provider, price: c.price.toString(), service: null, serviceName: null, needs: null, etaSeconds: c.etaSeconds, at, unpayable: c.price > 0n ? null : "it quoted no price", kind: "sdk", notify: opts.notify ?? false },
+    sdk,
+  };
 }
 
 /** A seller's answer to `negotiate`, read as a quote a buyer here can or cannot fund. Pure, for tests. */

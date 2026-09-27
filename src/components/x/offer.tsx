@@ -26,6 +26,24 @@ import { providerFor } from "@/lib/escrow/jobs";
 
 const TOKEN: Record<string, string> = { [USDT.toLowerCase()]: "USDT", [WBNB.toLowerCase()]: "WBNB" };
 
+/**
+ * What an agent on BNB's SDK is asked for, by job: its signed task is written
+ * from these (lib/escrow/task.ts), so a wallet for the jobs about a wallet and
+ * a sentence for the ones about a plan.
+ */
+function standardInputs(category: string | null): CallInput[] {
+  if (category === "health-factor") return [{ name: "wallet", required: true, description: "the account whose Venus loan to read", kind: "wallet" }];
+  if (category === "rebalancing") return [{ name: "wallet", required: true, description: "the owner of the PancakeSwap V3 positions", kind: "wallet" }];
+  if (category === "grid-trading")
+    return [
+      { name: "lower", required: false, description: "lowest price for the grid, in USDT per BNB; blank sets 8% under the price now", kind: "text" },
+      { name: "upper", required: false, description: "highest price, in USDT per BNB; blank sets 8% over", kind: "text" },
+      { name: "capital", required: false, description: "USD to spread across the grid; blank is 1000", kind: "text" },
+    ];
+  if (category === "yield-optimisation") return [{ name: "task", required: false, description: "what to place and how much, e.g. 1000 USDT", kind: "text" }];
+  return [{ name: "task", required: true, description: "what you want done, in a sentence", kind: "text" }];
+}
+
 /** What an outside escrow seller says it needs, as fields the drawer asks for. Optional where its own words say so. */
 function needsAsInputs(needs: Record<string, string> | null): CallInput[] {
   return Object.entries(needs ?? {})
@@ -70,7 +88,7 @@ export function offerFor(l: Listing): HireOffer {
           }
         : null,
     // An escrow-only seller asks in its quote; everyone else in its 402 or our code.
-    inputs: !perCall && outsideEscrow ? needsAsInputs(outsideEscrow.needs) : inputsFor(l.tokenId, preview),
+    inputs: !perCall && outsideEscrow ? (outsideEscrow.kind === "sdk" ? standardInputs(l.category) : needsAsInputs(outsideEscrow.needs)) : inputsFor(l.tokenId, preview),
     job: jobRail
       ? {
           href: `/hire/${l.tokenId}`,

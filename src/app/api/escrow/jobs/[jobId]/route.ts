@@ -13,6 +13,15 @@ export const dynamic = "force-dynamic";
 
 const LIMIT = { capacity: 120, windowMs: 60_000 };
 
+/** An answer as the seller gave it: JSON when it is JSON, its text otherwise. */
+const readable = (s: string): unknown => {
+  try {
+    return JSON.parse(s) as unknown;
+  } catch {
+    return s;
+  }
+};
+
 export async function GET(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const g = gate(request, LIMIT, CHAIN_ID);
   if (!g.allowed) return g.response;
@@ -20,7 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
   if (!/^\d{1,12}$/.test(jobId)) return fail(400, "jobId must be the kernel's job number.", CHAIN_ID, g.headers);
   const [row, chain] = await Promise.all([jobRow(jobId), readJob(BigInt(jobId)).catch(() => null)]);
   if (!chain) return fail(503, "The escrow could not be read just now.", CHAIN_ID, g.headers);
-  const { deliverable: _body, sellerAnswer, ...kept } = row ?? { deliverable: null, sellerAnswer: null };
+  const { deliverable: _body, sellerAnswer, sellerVerified, ...kept } = row ?? { deliverable: null, sellerAnswer: null, sellerVerified: null };
   return ok(
     {
       jobId,
@@ -34,7 +43,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
       // Ours is served here and hashes to the commitment; an outside seller's is where it says.
       deliverableUrl: row?.outside ? row.sellerUrl : row?.deliverableHash ? deliverableUrl(jobId) : null,
       // What an outside seller sent back when told the job was funded, as it sent it.
-      sellerAnswer: row?.outside && sellerAnswer ? (JSON.parse(sellerAnswer) as unknown) : null,
+      sellerAnswer: row?.outside && sellerAnswer ? readable(sellerAnswer) : null,
+      // True when the answer shown hashes to what the agent committed on chain.
+      sellerVerified: row?.outside ? sellerVerified : null,
       ours: Boolean(row),
       record: row ? kept : null,
     },

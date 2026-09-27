@@ -66,7 +66,15 @@ export default function EscrowHire({
     three has an open job already; trying again carries on from step three on
     that job rather than opening, and paying gas for, a second one.
   */
-  const progress = useRef<{ id: bigint | null; expiredAt: bigint | null; steps: Set<number> }>({ id: null, expiredAt: null, steps: new Set() });
+  const progress = useRef<{
+    id: bigint | null;
+    expiredAt: bigint | null;
+    steps: Set<number>;
+    /** An outside agent's live quote: who to name, what to fund, the description it signed, and until when it stands. */
+    quote: { provider: Address; price: bigint; description: string; expiresAt: number | null } | null;
+    /** A price the buyer has seen and accepted, when the live quote differs from the listed one. */
+    accepted: bigint | null;
+  }>({ id: null, expiredAt: null, steps: new Set(), quote: null, accepted: null });
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<{ status: string; deliverableUrl: string | null; submitTx?: string | null; answer?: unknown } | null>(null);
   const [fundTx, setFundTx] = useState<Hash | null>(null);
@@ -119,13 +127,33 @@ export default function EscrowHire({
     try {
       d.expiredAt ??= BigInt(Math.floor(Date.now() / 1000)) + disputeWindow + BigInt(DELIVERY_SECONDS);
       const about = subject ?? address;
+      /*
+        An outside agent is asked for its price again now, not from the census:
+        an agent on BNB's SDK signs a quote that lasts minutes, and refuses a
+        job whose description does not carry it. A price above the one shown
+        is put to the buyer before anything is signed.
+      */
+      if (offer.outside && d.id === null) {
+        setAt(0);
+        const r = await fetch("/api/escrow/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tokenId: offer.tokenId, inputs }) });
+        const j = await r.json().catch(() => null);
+        if (!r.ok || !j?.data) throw new Error(j?.error ?? "The agent's seller did not quote just now.");
+        const live = { provider: j.data.provider as Address, price: BigInt(j.data.price), description: String(j.data.description), expiresAt: j.data.expiresAt ?? null };
+        if (live.price > budget && d.accepted !== live.price) {
+          d.accepted = live.price;
+          setAt(-1);
+          setError(`The seller's price is now ${formatUnits(live.price, 18)} $U. Press the button again to accept it.`);
+          return;
+        }
+        d.quote = live;
+      }
+      const cost = d.quote?.price ?? budget;
+      const provider = d.quote?.provider ?? (offer.provider as Address);
       // An outside seller reads its task from the description; ours is the line any indexer can match.
-      const description = offer.outside
-        ? outsideDescription(offer.outside.serviceName ?? offer.name, offer.outside.service, inputs)
-        : `${VIA}: ${offer.name} (ERC-8004 #${offer.tokenId}) for ${about}`;
+      const description = d.quote?.description ?? (offer.outside ? outsideDescription(offer.outside.serviceName ?? offer.name, offer.outside.service, inputs) : `${VIA}: ${offer.name} (ERC-8004 #${offer.tokenId}) for ${about}`);
       if (d.id === null) {
         const created = await step(0, () =>
-          sendMarketTx(address, "createJob", [offer.provider as Address, ESCROW.router, d.expiredAt, description, ESCROW.router], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }),
+          sendMarketTx(address, "createJob", [provider, ESCROW.router, d.expiredAt, description, ESCROW.router], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }),
         );
         const receipt = await marketClient.getTransactionReceipt({ hash: created });
         const log = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobCreated", logs: receipt.logs })[0];
@@ -135,18 +163,31 @@ export default function EscrowHire({
       }
       const id = d.id;
       if (!d.steps.has(1)) await step(1, () => sendMarketTx(address, "registerJob", [id, ESCROW.policy], undefined, undefined, { address: ESCROW.router, abi: ROUTER_ABI }));
-      if (!d.steps.has(2)) await step(2, () => sendMarketTx(address, "setBudget", [id, budget, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
+      if (!d.steps.has(2)) await step(2, () => sendMarketTx(address, "setBudget", [id, cost, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
       if (!d.steps.has(3)) {
         const allowance = (await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "allowance", args: [address, ESCROW.commerce] })) as bigint;
-        if (allowance < budget) {
-          await step(3, () => sendMarketTx(address, "approve", [ESCROW.commerce, budget], undefined, undefined, { address: ESCROW.paymentToken, abi: TOKEN_ABI }));
+        if (allowance < cost) {
+          await step(3, () => sendMarketTx(address, "approve", [ESCROW.commerce, cost], undefined, undefined, { address: ESCROW.paymentToken, abi: TOKEN_ABI }));
         } else {
           // Already approved for at least the budget: nothing to sign.
           d.steps.add(3);
           setDoneSteps([...d.steps]);
         }
       }
-      const funded = await step(4, () => sendMarketTx(address, "fund", [id, budget, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
+      /*
+        A signed quote stands for minutes, and the agent checks it at the block
+        the job is funded in. Funding after it lapses would lock the budget in
+        a job the agent will refuse, so the flow stops here and starts over
+        with a fresh quote instead; the unfunded job simply lapses.
+      */
+      if (d.quote?.expiresAt && Math.floor(Date.now() / 1000) > d.quote.expiresAt - 20) {
+        progress.current = { id: null, expiredAt: null, steps: new Set(), quote: null, accepted: null };
+        setDoneSteps([]);
+        setTxs({});
+        setJobId(null);
+        throw new Error("The agent's signed quote ran out before the job was funded, so it was not funded. Try again for a fresh quote.");
+      }
+      const funded = await step(4, () => sendMarketTx(address, "fund", [id, cost, "0x"], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }));
       setAt(5);
       setFundTx(funded);
       await fetch("/api/escrow/jobs", {
@@ -156,7 +197,8 @@ export default function EscrowHire({
       });
       void poll(id);
     } catch (e) {
-      setFailedAt(current);
+      // A lapsed quote starts the job over, so the retry begins at step one.
+      setFailedAt(progress.current.steps.size === 0 ? 0 : current);
       // Until the fund step confirms, no token has left the buyer's wallet, whatever else was signed.
       setError(`${(e as Error).message.slice(0, 200)} Nothing has left your wallet.`);
     }
