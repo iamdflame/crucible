@@ -19,7 +19,7 @@
  * undelivered is taken off sale until it delivers again.
  */
 
-import { keccak256, stringToHex, toHex, type Address, type Hash, type Hex } from "viem";
+import { keccak256, parseEventLogs, stringToHex, toHex, type Address, type Hash, type Hex } from "viem";
 import { marketClient, walletFor } from "@/lib/chain/market";
 import { sql as pg } from "@/lib/db/client";
 import { ensureTables } from "@/lib/db/tables";
@@ -220,15 +220,18 @@ export async function recordFunded(
   outside: { tokenId: string; inputs: Record<string, string> } | null = null,
 ): Promise<{ job: EscrowJob } | { refused: string; status: number }> {
   if (!pg) return { refused: "This deployment keeps no database.", status: 503 };
-  const [job, receipt, tx] = await Promise.all([
-    readJob(jobId),
-    marketClient.getTransactionReceipt({ hash: fundTx }).catch(() => null),
-    marketClient.getTransaction({ hash: fundTx }).catch(() => null),
-  ]);
-  if (!receipt || !tx) return { refused: "That funding transaction is not on BNB Smart Chain yet.", status: 404 };
+  const [job, receipt] = await Promise.all([readJob(jobId), marketClient.getTransactionReceipt({ hash: fundTx }).catch(() => null)]);
+  if (!receipt) return { refused: "That funding transaction is not on BNB Smart Chain yet.", status: 404 };
   if (receipt.status !== "success") return { refused: "That funding transaction reverted.", status: 400 };
-  if (tx.to?.toLowerCase() !== ESCROW.commerce.toLowerCase()) return { refused: "That transaction is not a call to the ERC-8183 escrow.", status: 400 };
-  if (tx.from.toLowerCase() !== job.client.toLowerCase()) return { refused: "That job was funded by a different wallet from its client.", status: 400 };
+  /*
+    The kernel's own event is the proof, whatever sent the transaction. A
+    wallet that batches the five steps into one confirmation sends it to the
+    buyer's own account (EIP-7702) or through a bundler, never to the escrow
+    directly, so the transaction's to and from prove nothing either way.
+  */
+  const funded = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobFunded", logs: receipt.logs.filter((l) => l.address.toLowerCase() === ESCROW.commerce.toLowerCase()) });
+  if (!funded.some((l) => l.args.jobId === jobId)) return { refused: "That transaction did not fund this job on the ERC-8183 escrow.", status: 400 };
+  if (!funded.some((l) => l.args.jobId === jobId && l.args.client.toLowerCase() === job.client.toLowerCase())) return { refused: "That job was funded by a different wallet from its client.", status: 400 };
   if (job.status !== "FUNDED" && job.status !== "SUBMITTED" && job.status !== "COMPLETED") return { refused: `That job is ${job.status.toLowerCase()}, not funded.`, status: 400 };
   const p = providers().get(job.provider.toLowerCase());
   if (!p && outside) return recordOutside(jobId, fundTx, job, outside);

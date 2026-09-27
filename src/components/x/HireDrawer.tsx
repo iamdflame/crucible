@@ -536,7 +536,7 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
             </div>
             <div>
               <dt>Signatures</dt>
-              <dd>Five transactions, each shown before you sign. About 0.0001 BNB of gas covers all five.</dd>
+              <dd>Five transactions, each shown before you sign, or one confirmation where your wallet batches them. About 0.0001 BNB of gas covers all five.</dd>
             </div>
           </dl>
         </div>
@@ -558,7 +558,7 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
   if (viaEscrow && step !== "review" && step !== "permissions" && step !== "free") {
     body = (
       <div className="x-hire">
-        <p className="x-hire__lede">Nothing moves until you sign each step.</p>
+        <p className="x-hire__lede">Nothing moves until you sign.</p>
         <EscrowHire offer={offer.escrow!} subject={sent.position ?? sent.wallet ?? sent.address ?? null} inputs={sent} category={offer.category} />
       </div>
     );

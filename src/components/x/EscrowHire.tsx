@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatUnits, parseEventLogs, type Address, type Hash } from "viem";
+import { encodeFunctionData, formatUnits, parseEventLogs, type Address, type Hash } from "viem";
 import { Check, Loader2, X } from "lucide-react";
 import { marketClient } from "@/lib/chain/market";
 import { fmtBnb, sendMarketTx, useWallet } from "@/lib/chain/wallet";
 import OpenInWallet from "./OpenInWallet";
 import RateAgent from "./RateAgent";
 import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, outsideDescription, POLICY_ABI, ROUTER_ABI, TOKEN_ABI, VIA } from "@/lib/escrow/contracts";
+import { canBatch, NotBatchable, sendBatch } from "@/lib/escrow/batch";
 
 /**
  * Hiring an agent through ERC-8183 escrow, from the buyer's own wallet.
@@ -78,6 +79,8 @@ export default function EscrowHire({
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<{ status: string; deliverableUrl: string | null; submitTx?: string | null; answer?: unknown; verified?: boolean | null } | null>(null);
   const [fundTx, setFundTx] = useState<Hash | null>(null);
+  // This wallet sends the five steps as one atomic batch: one confirmation instead of five.
+  const [batch, setBatch] = useState(false);
 
   useEffect(() => {
     marketClient
@@ -92,6 +95,7 @@ export default function EscrowHire({
       .then(setBalance)
       .catch(() => undefined);
     marketClient.getBalance({ address }).then(setBnb).catch(() => undefined);
+    void canBatch(address).then(setBatch);
   }, [address]);
 
   const outside = Boolean(offer.outside);
@@ -173,6 +177,53 @@ export default function EscrowHire({
       const provider = d.quote?.provider ?? (offer.provider as Address);
       // An outside seller reads its task from the description; ours is the line any indexer can match.
       const description = d.quote?.description ?? (offer.outside ? outsideDescription(offer.outside.serviceName ?? offer.name, offer.outside.service, inputs) : `${VIA}: ${offer.name} (ERC-8004 #${offer.tokenId}) for ${about}`);
+      /*
+        One confirmation, where the wallet batches: all five calls at once,
+        naming the job number they will create. Only on a fresh start; a job
+        already opened by the steps carries on by the steps.
+      */
+      if (batch && d.id === null && d.steps.size === 0) {
+        if (d.quote?.expiresAt && Math.floor(Date.now() / 1000) > d.quote.expiresAt - 20) {
+          d.quote = null;
+          throw new Error("The agent's signed quote ran out before you confirmed. Try again for a fresh one.");
+        }
+        const next = ((await marketClient.readContract({ address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "jobCounter" })) as bigint) + 1n;
+        const allowance = (await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "allowance", args: [address, ESCROW.commerce] })) as bigint;
+        const calls = [
+          { to: ESCROW.commerce as Address, data: encodeFunctionData({ abi: COMMERCE_ABI, functionName: "createJob", args: [provider, ESCROW.router, d.expiredAt, description, ESCROW.router] }) },
+          { to: ESCROW.router as Address, data: encodeFunctionData({ abi: ROUTER_ABI, functionName: "registerJob", args: [next, ESCROW.policy] }) },
+          { to: ESCROW.commerce as Address, data: encodeFunctionData({ abi: COMMERCE_ABI, functionName: "setBudget", args: [next, cost, "0x"] }) },
+          ...(allowance < cost ? [{ to: ESCROW.paymentToken as Address, data: encodeFunctionData({ abi: TOKEN_ABI, functionName: "approve", args: [ESCROW.commerce, cost] }) }] : []),
+          { to: ESCROW.commerce as Address, data: encodeFunctionData({ abi: COMMERCE_ABI, functionName: "fund", args: [next, cost, "0x"] }) },
+        ];
+        current = 0;
+        setAt(0);
+        let hash: Hash | null = null;
+        try {
+          hash = await sendBatch(address, calls, () => setAt(4));
+        } catch (e) {
+          if (!(e instanceof NotBatchable)) throw e;
+          // The wallet said it could batch and then would not: the steps, from the start.
+          setBatch(false);
+        }
+        if (hash) {
+          const receipt = await marketClient.waitForTransactionReceipt({ hash });
+          const fundedLog = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobFunded", logs: receipt.logs }).find((l) => l.args.client.toLowerCase() === address.toLowerCase());
+          if (!fundedLog) throw new Error("The batch went through, but no funded job for this wallet is in it. Check My Desk before trying again.");
+          const id = fundedLog.args.jobId;
+          d.id = id;
+          [0, 1, 2, 3, 4].forEach((i) => d.steps.add(i));
+          setJobId(id);
+          setDoneSteps([0, 1, 2, 3, 4]);
+          setTxs({ 0: hash, 1: hash, 2: hash, 3: hash, 4: hash });
+          setAt(5);
+          setFundTx(hash);
+          recordBody.current = JSON.stringify(offer.outside ? { jobId: id.toString(), tx: hash, subject, tokenId: offer.tokenId, inputs } : { jobId: id.toString(), tx: hash, subject });
+          void record();
+          void poll(id);
+          return;
+        }
+      }
       if (d.id === null) {
         const created = await step(0, () =>
           sendMarketTx(address, "createJob", [provider, ESCROW.router, d.expiredAt, description, ESCROW.router], undefined, undefined, { address: ESCROW.commerce, abi: COMMERCE_ABI }),
@@ -254,6 +305,7 @@ export default function EscrowHire({
         {disputeWindow === null ? "after the dispute window" : `${days(disputeWindow)} after it delivers`} unless you dispute, and comes back to you if it does not deliver
         within {DELIVERY_SECONDS / 60} minutes.
       </p>
+      {batch && at < 5 ? <p className="x-escrow__note">Your wallet takes all five steps as one confirmation: they happen together or not at all.</p> : null}
       <ol className="x-escrow__steps">
         {STEPS.map((s, i) => (
           <li
@@ -300,7 +352,7 @@ export default function EscrowHire({
           </p>
         ) : (
           <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run} disabled={disputeWindow === null}>
-            Fund the job, {short} $U
+            {batch ? `Fund the job, ${short} $U, in one confirmation` : `Fund the job, ${short} $U`}
           </button>
         )
       ) : null}
