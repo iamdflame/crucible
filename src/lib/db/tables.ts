@@ -167,6 +167,27 @@ const STATEMENTS: { name: string; run: () => Promise<unknown> }[] = [
     },
   },
   {
+    // MANDATE's conformance checks: each agent's answer to the same public question, checked against our own chain reading.
+    name: "conformance_runs",
+    run: async () => {
+      await pg!`
+        create table if not exists conformance_runs (
+          id bigserial primary key,
+          token_id text not null,
+          category text,
+          verdict text not null,
+          source text,
+          checks jsonb not null default '[]',
+          note text,
+          excerpt text,
+          block bigint,
+          at timestamptz not null default now()
+        )
+      `;
+      await pg!`create index if not exists conformance_runs_token_at on conformance_runs (token_id, at desc)`;
+    },
+  },
+  {
     /*
       Free liquidation alerts: a wallet watched for a Telegram chat, the
       health factor that should wake them, and what we last read and said, so

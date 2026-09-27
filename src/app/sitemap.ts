@@ -5,7 +5,7 @@ import { live } from "@/lib/data/live";
 
 export const revalidate = 3600;
 
-const PAGES = ["", "/agents", "/quest", "/build", "/leash", "/alerts", "/help", "/categories", "/activity", "/desk", "/list", "/jobs", "/trust", "/proof", "/graveyard", "/contracts", "/status", "/pool-gaps", "/api", "/brand"];
+const PAGES = ["", "/agents", "/quest", "/build", "/leash", "/alerts", "/standard", "/help", "/categories", "/activity", "/desk", "/list", "/jobs", "/trust", "/proof", "/graveyard", "/contracts", "/status", "/pool-gaps", "/api", "/brand"];
 
 /** The pages, and every agent listed under one of the four jobs. */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

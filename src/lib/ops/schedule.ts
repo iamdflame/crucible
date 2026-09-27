@@ -31,6 +31,7 @@ import { advanceEpochs } from "@/lib/market/epochs";
 import { testBuys } from "@/lib/market/test-buys";
 import { checkAlerts } from "@/lib/alerts/watch";
 import { requirements } from "@/lib/ops/requirements";
+import { runConformance } from "@/lib/conformance/run";
 import { warmOutcomes } from "@/lib/market/hire-law";
 
 export interface Job {
@@ -88,6 +89,14 @@ export const JOBS: Job[] = [
       const w = await readGridWindow({ fresh: true });
       return { fills: w.fills.length, toBlock: w.toBlock };
     },
+  },
+  {
+    // MANDATE's conformance checks: each hireable agent's answer against our own chain reading, oldest first.
+    name: "conformance",
+    everyMinutes: 60,
+    budgetMs: 25_000,
+    afterResponse: true,
+    run: (budgetMs = 23_000) => runConformance({ budgetMs }),
   },
   {
     // BNB's Phase 2 requirements, each worked out from what the site can read, for /status and /api/requirements.

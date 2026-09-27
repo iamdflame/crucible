@@ -32,7 +32,8 @@ export default function AgentTile({ l, forPosition }: { l: Listing; forPosition?
   const trust = trustOf(l, assayFor(l.tokenId));
   const rail = verdict.rails.map((r) => RAIL[r.kind]).find(Boolean) ?? (l.quote || l.declaresPayment ? "x402" : null);
   const detail = `/agents/${l.tokenId}${forPosition ? `?about=${encodeURIComponent(forPosition)}` : ""}`;
-  const proof = trust.badges[0] ?? null;
+  // An answer we checked against the chain ourselves outranks any other proof.
+  const proof = l.checked?.verdict === "pass" ? "Passed MANDATE checks" : (trust.badges[0] ?? null);
 
   return (
     <article className={`x-agent${verdict.ok ? "" : " x-agent--dim"}`} data-agent={l.tokenId}>

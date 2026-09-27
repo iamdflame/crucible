@@ -27,6 +27,7 @@ import { reviewQuality, type ReviewQuality } from "@/lib/market/reviews";
 import { assayFor } from "@/lib/market/assays";
 import { humanAmount, type Quote } from "@/lib/x402/quote";
 import type { EscrowQuote } from "@/lib/escrow/a2a";
+import { snapshot } from "@/lib/data/snapshots";
 import { paidCallsFromFile } from "@/lib/market/paid-calls";
 import { strangerHires } from "@/lib/market/stranger-hires";
 import { hirePauseFor } from "@/lib/market/paused";
@@ -111,6 +112,8 @@ export interface Listing {
    * A2A and delivers on chain. Null when it sells no such job.
    */
   escrowQuote: EscrowQuote | null;
+  /** The latest MANDATE conformance verdict: its answer checked against our own chain reading. */
+  checked?: { verdict: string; at: string } | null;
   /** The price as a person would say it, when there is one. */
   priceLabel: string | null;
   /**
@@ -407,6 +410,7 @@ export function toListing(a: IndexedAgent, hires = 0, settled?: number): Listing
     declaresPayment: Boolean(a.x402),
     quote,
     escrowQuote,
+    checked: snapshot<Record<string, { verdict: string; at: string }>>("conformance")?.payload?.[a.tokenId] ?? null,
     priceLabel: priceLabelOf(quote) ?? escrowPriceLabel(escrowQuote),
     usdPrice: quote && STABLE[symbolOf(quote)] ? Number(quote.amount) / 10 ** quote.decimals : escrowQuote && !escrowQuote.unpayable ? Number(escrowQuote.price) / 1e18 : null,
     createdAt: a.createdAt ?? null,

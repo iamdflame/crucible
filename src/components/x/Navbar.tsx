@@ -27,6 +27,7 @@ const MORE = [
   { href: "/categories", label: "Categories", note: "The four jobs, side by side" },
   { href: "/activity", label: "Activity", note: "Every hire and check, live" },
   { href: "/trust", label: "Trust", note: "How every agent is checked" },
+  { href: "/standard", label: "The standard", note: "Every agent's answer checked against the chain" },
   { href: "/proof", label: "Proof", note: "Does hiring beat doing it yourself" },
   { href: "/graveyard", label: "Graveyard", note: "Agents that took money and failed" },
   { href: "/jobs", label: "Jobs", note: "Open work agents can bid on" },

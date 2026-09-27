@@ -20,6 +20,9 @@ import { previewFor } from "@/lib/market/quotes";
 import { live } from "@/lib/data/live";
 import { describeStatus, strangerHiresLive } from "@/lib/market/stranger-hires";
 import { jobsOfAgent, type EscrowJob } from "@/lib/escrow/jobs";
+import { latestConformance, type Latest } from "@/lib/conformance/run";
+
+const CONF_WORD: Record<string, string> = { pass: "Passed", fail: "Failed", "not-comparable": "Not comparable", unreadable: "Could not be checked", untested: "Not tested yet" };
 import { hirePath } from "@/lib/market/hire-law";
 import { hireCounts } from "@/lib/market/hires";
 import { SPONSORED } from "@/lib/market/sponsored-targets";
@@ -95,6 +98,7 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const paidJobs = (await strangerHiresLive().catch(() => [])).filter((h) => h.tokenId === tokenId);
   // Escrowed jobs bought on this site, from its own record; the filed September hires are shown above them once.
   const siteJobs = (await jobsOfAgent(tokenId).catch(() => [])).filter((j) => !paidJobs.some((h) => h.jobId === j.jobId));
+  const conf = (await latestConformance().catch(() => new Map<string, Latest>())).get(tokenId) ?? null;
   await live();
   /*
     Every agent on the registry has a page, including one minted a minute ago
@@ -307,6 +311,49 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
               </div>
             ) : null}
           </section>
+
+          {/* ------------------------------------------------ conformance checks */}
+          {l.category ? (
+            <section className="x-ad-sec" aria-labelledby="h-conf" id="checks">
+              <div className="x-ad-sec__head">
+                <h2 id="h-conf">MANDATE checks</h2>
+                {conf ? <span className={`x-conf x-conf--${conf.verdict}`}>{CONF_WORD[conf.verdict] ?? conf.verdict}</span> : null}
+              </div>
+              {conf && conf.checks.length ? (
+                <div className="x-table-wrap">
+                  <table className="x-conf__table">
+                    <thead>
+                      <tr>
+                        <th>Field</th>
+                        <th>Our reading of the chain</th>
+                        <th>Its answer</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conf.checks.map((c) => (
+                        <tr key={c.field}>
+                          <td>{c.field}</td>
+                          <td className="x-mono">{c.ours}</td>
+                          <td className="x-mono">{c.theirs}</td>
+                          <td>{c.pass ? "matches" : "does not match"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              <p className="x-ad-src">
+                {conf
+                  ? `${conf.note ? `${conf.note}. ` : ""}${conf.source ? `Answer from ${conf.source === "our agent" ? "our own agent" : conf.source === "free call" ? "its free call" : "our test purchase"}, ` : ""}checked ${new Date(conf.at).toUTCString().slice(5, 22)} UTC${conf.block ? ` against block ${conf.block.toLocaleString("en-GB")}` : ""}. `
+                  : "Not checked yet. "}
+                We ask every agent in a job the same public question and compare its answer with our own reading of BNB Smart Chain, by code.{" "}
+                <Link className="x-link" href="/standard">
+                  The standard
+                </Link>
+              </p>
+            </section>
+          ) : null}
 
           {/* ------------------------------------------------------------ trust */}
           <section className="x-ad-sec" aria-labelledby="h-trust">

@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { sql as pg } from "@/lib/db/client";
 import { ensureTables } from "@/lib/db/tables";
 
-export type SnapshotName = "probe" | "agents" | "assays" | "census" | "demo" | "grid-window" | "grid-state" | "funnel" | "definition" | "pool-gap" | "pool-gap-progress" | "registry-tail" | "requirements";
+export type SnapshotName = "probe" | "agents" | "assays" | "census" | "demo" | "grid-window" | "grid-state" | "funnel" | "definition" | "pool-gap" | "pool-gap-progress" | "registry-tail" | "requirements" | "conformance";
 
 interface Loaded {
   payload: unknown;
@@ -67,7 +67,7 @@ export function snapshot<T = unknown>(name: SnapshotName): { payload: T; capture
  * Loads newer readings from the database. Safe to call on every render:
  * it does nothing more than once a minute per snapshot per instance.
  */
-export const DEFAULT_WARM: SnapshotName[] = ["probe", "assays", "census", "demo", "grid-window", "grid-state", "definition"];
+export const DEFAULT_WARM: SnapshotName[] = ["probe", "assays", "census", "demo", "grid-window", "grid-state", "definition", "conformance"];
 
 const warming = new Map<SnapshotName, Promise<void>>();
 

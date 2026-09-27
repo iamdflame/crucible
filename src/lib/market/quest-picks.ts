@@ -38,7 +38,9 @@ export async function questPicks(): Promise<QuestPick[]> {
   // An escrowed job is the hire the chain records against the agent, so an agent that takes one leads.
   const escrow = (l: Listing) => (hirePath(l).rails.some((r) => r.kind === "escrow") ? 1 : 0);
   return CATEGORIES.map((category) => {
-    const inJob = payable.filter((l) => l.category === category).sort((a, b) => escrow(b) - escrow(a) || rankForQuest(a, b));
+    // Then an agent whose answer passed our conformance checks, then evidence, price and speed.
+    const passed = (l: Listing) => (l.checked?.verdict === "pass" ? 1 : 0);
+    const inJob = payable.filter((l) => l.category === category).sort((a, b) => escrow(b) - escrow(a) || passed(b) - passed(a) || rankForQuest(a, b));
     return { category, pick: inJob[0] ?? null, others: Math.max(0, inJob.length - 1) };
   });
 }
