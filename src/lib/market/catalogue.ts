@@ -54,6 +54,8 @@ export interface Query {
   /** One registration per product: copies of the same card collapse onto the earliest. */
   unique: boolean;
   // trust
+  /** Its answer matched our own chain reading in MANDATE's conformance checks. */
+  checked: boolean;
   capable: boolean;
   assayed: boolean;
   reviewed: boolean;
@@ -75,6 +77,7 @@ export const EMPTY: Query = {
   live: false,
   fresh: false,
   unique: false,
+  checked: false,
   capable: false,
   assayed: false,
   reviewed: false,
@@ -104,6 +107,7 @@ export function parseQuery(sp: Params): Query {
     live: flag("live"),
     fresh: flag("fresh"),
     unique: flag("unique"),
+    checked: flag("checked"),
     capable: flag("capable"),
     assayed: flag("assayed"),
     reviewed: flag("reviewed"),
@@ -121,7 +125,7 @@ export function hrefFor(q: Query, patch: Partial<Query>, base = "/agents"): stri
   const p = new URLSearchParams();
   if (next.category) p.set("category", next.category);
   if (next.q) p.set("q", next.q);
-  for (const k of ["hireable", "live", "fresh", "unique", "capable", "assayed", "reviewed", "settled", "priced"] as const) if (next[k]) p.set(k, "1");
+  for (const k of ["hireable", "live", "fresh", "unique", "checked", "capable", "assayed", "reviewed", "settled", "priced"] as const) if (next[k]) p.set(k, "1");
   if (next.max) p.set("max", String(next.max));
   if (next.proto) p.set("proto", next.proto);
   if (next.rail) p.set("rail", next.rail);
@@ -139,6 +143,7 @@ export const PRED = {
   live: (l: Listing) => l.liveness === "live",
   fresh: (l: Listing) => Boolean(l.probe?.at && Date.now() - Date.parse(l.probe.at) < DAY),
   unique: (l: Listing) => l.firstOfProduct,
+  checked: (l: Listing) => l.checked?.verdict === "pass",
   capable: (l: Listing) => assayFor(l.tokenId)?.results.find((r) => r.id === "capability")?.verdict === "pass",
   // Every indexed agent has been assayed, so "assayed" alone filters nothing.
   // This is the useful version: it passed at least half of the checks that
@@ -177,6 +182,7 @@ export function applyQuery(all: Listing[], q: Query): Result {
     if (q.live && !PRED.live(l)) return false;
     if (q.fresh && !PRED.fresh(l)) return false;
     if (q.unique && !PRED.unique(l)) return false;
+    if (q.checked && !PRED.checked(l)) return false;
     if (q.capable && !PRED.capable(l)) return false;
     if (q.assayed && !PRED.assayed(l)) return false;
     if (q.reviewed && !PRED.reviewed(l)) return false;

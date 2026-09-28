@@ -99,6 +99,18 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const paidJobs = (await strangerHiresLive().catch(() => [])).filter((h) => h.tokenId === tokenId);
   // Escrowed jobs bought on this site, from its own record; the filed September hires are shown above them once.
   const siteJobs = ((await withTimeout(jobsOfAgent(tokenId).catch(() => []), 6_000)) ?? []).filter((j) => !paidJobs.some((h) => h.jobId === j.jobId));
+  /*
+    How fast it has delivered escrowed jobs opened here: from our record of the
+    funding, written moments after it, to the kernel's own submission time. A
+    job we only learned of later (a watcher's find) would read as slow, so a
+    negative or day-long gap is left out rather than guessed at.
+  */
+  const took = siteJobs
+    .filter((j) => j.submittedAt)
+    .map((j) => Number(j.submittedAt) - Date.parse(j.createdAt) / 1000)
+    .filter((sec) => sec >= 0 && sec < 86_400)
+    .sort((a, b) => a - b);
+  const deliveredIn = took.length ? { seconds: Math.max(1, Math.round(took[Math.floor(took.length / 2)]!)), jobs: took.length } : null;
   const conf = ((await withTimeout(latestConformance().catch(() => new Map<string, Latest>()), 6_000)) ?? new Map<string, Latest>()).get(tokenId) ?? null;
   await live();
   /*
@@ -635,7 +647,11 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                     batches them; the $U sits in the ERC-8183 contract, not with {l.name} or with us.
                   </li>
                   <li>
-                    <strong>{l.name} delivers on chain</strong>, usually within minutes. If nothing arrives before the deadline, you take the money back.
+                    <strong>{l.name} delivers on chain</strong>
+                    {deliveredIn
+                      ? `, ${deliveredIn.jobs === 1 ? "in" : "typically in"} ${deliveredIn.seconds < 120 ? `${deliveredIn.seconds} s` : `${Math.round(deliveredIn.seconds / 60)} min`} ${deliveredIn.jobs === 1 ? "on its one job here" : `across its ${deliveredIn.jobs} jobs here`}`
+                      : ", usually within minutes"}
+                    . If nothing arrives before the deadline, you take the money back.
                   </li>
                   <li>
                     <strong>It is paid seven days after it delivers</strong> unless you dispute, and you can rate it on chain.

@@ -68,6 +68,7 @@ export default async function AgentsPage({
     ...(q.live ? [{ label: "Answers as an agent", href: hrefFor(q, { live: false }) }] : []),
     ...(q.fresh ? [{ label: "Checked in the last day", href: hrefFor(q, { fresh: false }) }] : []),
     ...(q.unique ? [{ label: "One per product", href: hrefFor(q, { unique: false }) }] : []),
+    ...(q.checked ? [{ label: "Passed MANDATE checks", href: hrefFor(q, { checked: false }) }] : []),
     ...(q.capable ? [{ label: "Capability checked", href: hrefFor(q, { capable: false }) }] : []),
     ...(q.assayed ? [{ label: "Passes most checks", href: hrefFor(q, { assayed: false }) }] : []),
     ...(q.reviewed ? [{ label: "Has reputation", href: hrefFor(q, { reviewed: false }) }] : []),
@@ -107,6 +108,7 @@ export default async function AgentsPage({
       </details>
       <details className="x-rail__group" open>
         <summary>Trust</summary>
+        <Toggle k="checked" label="Passed MANDATE checks" n={count(PRED.checked)} />
         <Toggle k="capable" label="Capability checked" n={count(PRED.capable)} />
         <Toggle k="assayed" label="Passes most checks" n={count(PRED.assayed)} />
         <Toggle k="reviewed" label="Has reputation" n={count(PRED.reviewed)} />
@@ -347,7 +349,7 @@ export default async function AgentsPage({
             >
               <p>Try one of these:</p>
               <ul>
-                {q.capable || q.assayed || q.settled ? <li>remove a Trust filter, most agents have not been fully checked yet</li> : null}
+                {q.checked || q.capable || q.assayed || q.settled ? <li>remove a Trust filter, most agents have not been fully checked yet</li> : null}
                 {q.max !== null ? <li>raise or remove the price limit</li> : null}
                 {q.category ? <li>show all categories</li> : null}
                 {q.q ? <li>search for a job rather than a name, such as “protect a loan”</li> : null}
