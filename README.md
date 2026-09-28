@@ -260,7 +260,8 @@ cd contracts && forge test      # the contract suites
 ```
 
 Production runs on Vercel with `NEXT_PUBLIC_HOST=https://mandatemarkets.com`;
-an external pinger calls `/api/cron/tick` every five minutes with `CRON_SECRET`.
+Vercel's own cron calls `/api/cron/tick` every five minutes with `CRON_SECRET`,
+and a page served ticks it too if no job has run for seven minutes.
 
 [`docs/verify/2026-09-11.md`](docs/verify/2026-09-11.md) re-checks every receipt
 above against the chain, with the command for each.
@@ -294,8 +295,11 @@ prints the plan's boxes with what was read to decide each one.
   one product are badged. The strangers we can pay are few: ten on 26
   September, three per call and seven through ERC-8183 escrow.
 - **GitHub Actions is still billing-locked.** The site's own clock replaced it:
-  an external pinger calls `/api/cron/tick` every five minutes, and `/status`
-  shows fourteen days of samples and when each job last ran.
+  Vercel's cron calls `/api/cron/tick` every five minutes, each due job runs in
+  its own invocation, a page served ticks it if the schedule goes seven minutes
+  without a run, and `/status` shows fourteen days of samples and when each job
+  last ran. (An outside pinger did this until 27 Sep; a redirect had silently
+  dropped its key on the 25th.)
 - **Leashes on buyers' wallets are new.** Yield-1 and Guard-1 act on a
   buyer's Altana passkey wallet through a session the buyer grants, capped
   per day and revocable in one tap; it passed end to end on mainnet on 25

@@ -39,9 +39,11 @@ out of the upload; check it before adding any directory that holds a key.
 
 GitHub Actions is refused on billing, so nothing there runs. What does:
 
-- `/api/cron/tick`, called every five minutes by an external pinger with
-  `CRON_SECRET`. It runs whichever jobs are due, in priority order, and stops
-  starting new ones near the pinger's thirty seconds. Unauthenticated, it
+- `/api/cron/tick`, called every five minutes by Vercel's cron (vercel.json)
+  with `CRON_SECRET` as its bearer token, and by any page served when no job
+  has run for seven minutes (`lib/ops/self-clock.ts`). It runs the quick jobs
+  that are due, in priority order, then starts each due after-response job as
+  its own request (`?job=<name>`, under a lease) so none waits on another. Unauthenticated, it
   answers 401 with every job's last run, so anyone can see the clock is moving.
   The jobs, most urgent first:
   - `guard-1` every 10 min, `range-1` every 15 min, `yield-1` every 6 h: the
