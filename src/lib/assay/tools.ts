@@ -34,6 +34,13 @@ const JOB_WORDS: Record<Category, RegExp> = {
 
 /** Tools that exist on every server and say nothing about the job. */
 const GENERIC = /^(ping|health|healthcheck|status|help|info|version|echo|about|capabilities|list_?tools|get_?info|whoami)$/i;
+/*
+  How an agent is hired, not what it does: the skills BNB's agent SDK gives
+  every seller (negotiate a job, hear it is funded, read its status). An agent
+  offering only these said nothing about its job, so they are not held against
+  the job its card claims; its signed quote and delivered work are checked instead.
+*/
+const PROTOCOL = /erc[- ]?8183|negotiat|notify[_ ]?(the )?(seller|funded)|job[_ ]?status/i;
 
 /** "getHealthFactor" and "get_health_factor" both read as "get health factor". */
 const words = (t: Tool) =>
@@ -45,7 +52,7 @@ export type ToolsFit =
   | { state: "mismatch"; listed: string[] };
 
 export function toolsFit(category: Category | null, tools: Tool[] | undefined | null): ToolsFit {
-  const real = (tools ?? []).filter((t) => t.name && !GENERIC.test(t.name.trim()));
+  const real = (tools ?? []).filter((t) => t.name && !GENERIC.test(t.name.trim()) && !PROTOCOL.test(t.name));
   if (!category || real.length === 0) return { state: "none" };
   const fitting = real.filter((t) => JOB_WORDS[category].test(words(t))).map((t) => t.name);
   if (fitting.length) return { state: "fits", fitting, listed: real.length };
