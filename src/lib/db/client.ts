@@ -18,8 +18,14 @@ let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 if (url) {
   sql = postgres(url, {
-    max: process.env.NODE_ENV === "production" ? 5 : 1,
-    idle_timeout: 20,
+    /*
+      Two per instance, let go after ten idle seconds. Supabase's pooler takes
+      200 clients in all, and every instance holds its own pool: at five each,
+      a crawler's burst of forty page loads on 29 Sep filled it and background
+      work was refused. A page's few queries wait their turn instead.
+    */
+    max: process.env.NODE_ENV === "production" ? 2 : 1,
+    idle_timeout: 10,
     connect_timeout: 15,
     prepare: false, // pooled connections (Neon/Supabase pgbouncer)
     // `create table if not exists` answers with a NOTICE on every cold start;
