@@ -314,7 +314,7 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
   push(
     "hired",
     hirers.length >= 3 ? "pass" : "pending",
-    `${hirers.length} of 3 different wallets that are not its own have completed a hire${hirers.length ? `: ${hirers.map((h) => `${h.wallet.slice(0, 8)}… (${h.via}${h.team ? ", MANDATE's own wallet" : ""})`).join("; ")}` : ""}. Counted from hires through MANDATE and escrowed jobs on the shared kernel; per-call hires on other marketplaces are not seen here. BNB Chain also excludes wallets you fund.`,
+    `${hirers.length} different wallet${hirers.length === 1 ? "" : "s"} that ${hirers.length === 1 ? "is" : "are"} not its own ${hirers.length === 1 ? "has" : "have"} completed a hire (3 needed)${hirers.length ? `: ${hirers.map((h) => `${h.wallet.slice(0, 8)}… (${h.via}${h.team ? ", MANDATE's own wallet" : ""})`).join("; ")}` : ""}. Counted from hires through MANDATE and escrowed jobs on the shared kernel; per-call hires on other marketplaces are not seen here. BNB Chain also excludes wallets you fund.`,
   );
 
   // 5 and 6. Its own onchain actions, and whether they fit its job.
@@ -343,8 +343,8 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
     if (acts === null) console.warn(`qualify #${tokenId}: reading its wallets took over 30 s (${Date.now() - started} ms)`);
     const read = (acts ?? []).filter((a): a is WalletActivity => Boolean(a));
     if (!read.length) {
-      push("executes", "unknown", "Its wallets' transactions could not be read just now.");
-      push("fits", "unknown", "Its transactions could not be read just now.");
+      push("executes", "unknown", "Its wallets' history could not be read just now: the archive node we read it from limits how often it answers. It is read again on the next check, within half an hour.");
+      push("fits", "unknown", "Read with its transactions, on the next check.");
     } else {
       const sent = read.reduce((s, a) => s + a.sent, 0);
       const days = new Set(read.flatMap((a) => a.days));
