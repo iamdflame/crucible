@@ -169,7 +169,13 @@ async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Prom
   return out;
 }
 
-/** The block at each UTC midnight from `since` to now, estimated from two anchors and corrected once against the blocks' own times. */
+/**
+ * The block at each UTC midnight from `since` to now, interpolated between
+ * the head and a block two million back. BSC's block time is steady, so the
+ * estimate is minutes off at most, which only matters for a transaction sent
+ * within minutes of midnight; reading every boundary block to correct it cost
+ * a call a day and pushed a check past its time.
+ */
 async function dayBlocks(since: number): Promise<{ day: number; block: bigint }[]> {
   const c = marketClient;
   const head = await c.getBlock();
@@ -180,13 +186,7 @@ async function dayBlocks(since: number): Promise<{ day: number; block: bigint }[
   const rate = Number(head.number - anchor.number) / (now - Number(anchor.timestamp));
   const days: number[] = [];
   for (let d = startDay; d <= now; d += DAY) days.push(d);
-  const guess = (t: number) => head.number - BigInt(Math.max(0, Math.round((now - t) * rate)));
-  return pool(days, 8, async (d) => {
-    const b = guess(d);
-    const blk = await c.getBlock({ blockNumber: b }).catch(() => null);
-    const fixed = blk ? b + BigInt(Math.round((d - Number(blk.timestamp)) * rate)) : b;
-    return { day: d, block: fixed > head.number ? head.number : fixed };
-  });
+  return days.map((d) => ({ day: d, block: head.number - BigInt(Math.max(0, Math.round((now - d) * rate))) }));
 }
 
 interface WalletActivity {
@@ -338,9 +338,9 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
           }),
         ),
       ),
-      25_000,
+      30_000,
     );
-    if (acts === null) console.warn(`qualify #${tokenId}: reading its wallets took over 25 s (${Date.now() - started} ms)`);
+    if (acts === null) console.warn(`qualify #${tokenId}: reading its wallets took over 30 s (${Date.now() - started} ms)`);
     const read = (acts ?? []).filter((a): a is WalletActivity => Boolean(a));
     if (!read.length) {
       push("executes", "unknown", "Its wallets' transactions could not be read just now.");
@@ -358,7 +358,7 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
         .flatMap((a) => a.windows.flatMap((w) => Array.from({ length: w.nonceTo - w.nonceFrom }, (_, i) => ({ wallet: a.wallet as Address, nonce: w.nonceFrom + i, w }))))
         .sort((x, y) => Number(y.w.to - x.w.to) || y.nonce - x.nonce)
         .slice(0, SAMPLE);
-      const found = (await withTimeout(pool(wanted, 2, (x) => findTx(c, x.wallet, x.nonce, x.w.from, x.w.to).catch(() => null)), 25_000)) ?? [];
+      const found = (await withTimeout(pool(wanted, 2, (x) => findTx(c, x.wallet, x.nonce, x.w.from, x.w.to).catch(() => null)), 18_000)) ?? [];
       found.forEach((t, i) => {
         if (!t) return;
         const kind = kindOf(t.to, t.input);
