@@ -85,7 +85,10 @@ const CACHE_MS = 30 * 60_000;
 
 /* ------------------------------------------------------- what a call was */
 
-export type Kind = "lending" | "trade" | "position" | "vault" | "delivery" | "approval" | "transfer" | "other";
+export type Kind = "lending" | "trade" | "position" | "vault" | "delivery" | "registry" | "approval" | "transfer" | "other";
+
+/** The ERC-8004 registries: an agent keeping its own registration current is housekeeping, not its job. */
+const REGISTRIES = new Set([IDENTITY_REGISTRY.toLowerCase(), "0x8004baa17c55a88189ae136b182e5fda19de9b63"]);
 
 /** Marketplace contracts an agent answers through: delivering a job is its work for a buyer, but not the protocol work its job names. */
 const MARKETS = new Set([ESCROW.commerce.toLowerCase(), ESCROW.router.toLowerCase(), MARKET_ADDRESS.toLowerCase()]);
@@ -104,6 +107,7 @@ export function kindOf(to: string | null, input: string): Kind {
   if (t === PROTOCOLS.venusComptroller || t === PROTOCOLS.venusVBNB || t === PROTOCOLS.venusVUSDT || t === PROTOCOLS.aaveV3Pool || LENDING.has(sel)) return "lending";
   if (VAULT.has(sel)) return "vault";
   if (MARKETS.has(t)) return "delivery";
+  if (REGISTRIES.has(t)) return "registry";
   if (sel === "0x095ea7b3") return "approval";
   if (sel === "0xa9059cbb" || input === "0x") return "transfer";
   return "other";
@@ -367,7 +371,9 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
         const kind = kindOf(t.to, t.input);
         actions.push({ wallet: wanted[i]!.wallet, tx: t.hash, to: t.to, kind, fits: fitsJob(category, kind), at: new Date(t.at * 1000).toISOString() });
       });
-      const counted = actions.filter((a) => a.kind !== "approval" && a.kind !== "transfer" && a.kind !== "delivery");
+      // Work we can name (lending, trades, positions, vaults); housekeeping (approvals, transfers, deliveries, its registration) counts neither way.
+      const counted = actions.filter((a) => a.kind === "lending" || a.kind === "trade" || a.kind === "position" || a.kind === "vault");
+      const unknownTo = [...new Set(actions.filter((a) => a.kind === "other").map((a) => a.to ?? "contract creation"))];
       const deliveries = actions.filter((a) => a.kind === "delivery").length;
       const fitting = counted.filter((a) => a.fits).length;
       if (!actions.length) push("fits", sent ? "unknown" : "pending", sent ? "Its transactions could not be looked up just now." : "It has no transactions of its own yet.");
@@ -375,8 +381,8 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
       else
         push(
           "fits",
-          fitting > 0 && fitting * 2 >= counted.length ? "pass" : counted.length ? "fail" : "pending",
-          `Of its ${actions.length} most recent transactions, ${fitting} ${fitting === 1 ? "is" : "are"} ${CATEGORY_LABEL[category].toLowerCase()} work (${[...new Set(actions.map((a) => a.kind))].join(", ")}).${deliveries ? ` ${deliveries} ${deliveries === 1 ? "is a delivery" : "are deliveries"} of jobs to a marketplace contract: work for a buyer, but BNB Chain asks for actions of the job itself (${category === "grid-trading" ? "repeated trades" : category === "rebalancing" ? "adjusting positions" : "lending or vault calls"}).` : ""} Approvals and plain transfers count neither way.`,
+          fitting > 0 && fitting * 2 >= counted.length ? "pass" : counted.length ? "fail" : unknownTo.length ? "unknown" : "pending",
+          `Of its ${actions.length} most recent transactions, ${fitting} ${fitting === 1 ? "is" : "are"} ${CATEGORY_LABEL[category].toLowerCase()} work (${[...new Set(actions.map((a) => a.kind))].join(", ")}).${deliveries ? ` ${deliveries} ${deliveries === 1 ? "is a delivery" : "are deliveries"} of jobs to a marketplace contract: work for a buyer, but BNB Chain asks for actions of the job itself (${category === "grid-trading" ? "repeated trades" : category === "rebalancing" ? "adjusting positions" : "lending or vault calls"}).` : ""} ${unknownTo.length ? ` ${unknownTo.length === 1 ? "One calls a contract" : "Some call contracts"} we do not recognise (${unknownTo.map((a) => a.slice(0, 10) + "…").join(", ")}), so we cannot say; BNB Chain reviews those by hand.` : ""} Approvals, transfers and updates to its own registration count neither way.`,
         );
     }
   }

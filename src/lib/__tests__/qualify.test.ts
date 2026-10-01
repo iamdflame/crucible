@@ -17,6 +17,7 @@ describe("Set and Earn: what an agent's transaction did", () => {
     expect(kindOf("0x0000000000000000000000000000000000000003", "0x095ea7b3")).toBe("approval");
     expect(kindOf("0x0000000000000000000000000000000000000003", "0x")).toBe("transfer");
     expect(kindOf("0x0000000000000000000000000000000000000003", "0xdeadbeef")).toBe("other");
+    expect(kindOf("0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", "0x8ea42286")).toBe("registry");
   });
 
   it("holds each job to the work BNB Chain names for it", () => {
