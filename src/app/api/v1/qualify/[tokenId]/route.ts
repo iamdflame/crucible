@@ -14,6 +14,13 @@ import { CHAIN_ID } from "@/lib/config";
 import { fail, gate, ok, preflight } from "@/lib/api/respond";
 import { withLease } from "@/lib/db/lease";
 import { cachedQualification, qualify, quickQualification } from "@/lib/campaign/qualify";
+import { warm } from "@/lib/data/snapshots";
+import { warmRegistry } from "@/lib/registry/tail";
+import { warmOutcomes } from "@/lib/market/hire-law";
+import { withTimeout } from "@/lib/cache";
+
+// The census (live, priced), the registry tail and paid calls, as they stand now rather than as committed.
+const fresh = () => withTimeout(Promise.all([warm().catch(() => undefined), warmRegistry().catch(() => undefined), warmOutcomes().catch(() => undefined)]), 9_000);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const kept = await cachedQualification(tokenId);
   if (kept) return ok(kept, { chainId: CHAIN_ID, at: kept.at }, g.headers);
   // Read in full after the reply, by one invocation at a time per agent.
+  await fresh();
   after(() => withLease(`qualify:${tokenId}`, 90, () => qualify(tokenId, { fresh: true })).then(() => undefined, () => undefined));
   const quick = await quickQualification(tokenId);
   return ok(quick, { chainId: CHAIN_ID, at: quick.at }, g.headers);

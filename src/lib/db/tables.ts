@@ -342,13 +342,14 @@ async function catalogue(names: string[]): Promise<Map<string, TableState> | nul
   taking every reader of the table down with it.
 */
 async function ddl(statement: string): Promise<void> {
-  // The timeouts are transaction-local, so the statement has to run on the
-  // same transaction, not on a fresh connection from the pool.
-  await pg!.begin(async (tx) => {
-    await tx`set local lock_timeout = '3s'`;
-    await tx`set local statement_timeout = '10s'`;
-    await tx.unsafe(statement);
-  });
+  /*
+    The timeouts are transaction-local, so they and the statement go as one
+    multi-statement query, which Postgres runs as a single implicit
+    transaction. Not sql.begin: with pipelining off (db/client.ts) postgres.js
+    never reserves a connection for it, and every transaction failed as
+    UNSAFE_TRANSACTION or hung (1 Oct, 18:20 to 18:35 UTC).
+  */
+  await pg!.unsafe(`set local lock_timeout = '3s'; set local statement_timeout = '10s'; ${statement}`);
 }
 
 /** True when the tables exist (or there is no database and nothing to do). */

@@ -31,6 +31,9 @@ if (url) {
       Supabase's transaction pooler those stall once more than two queue on a
       connection (measured 29 Sep: 4 of 16 finished, the rest hung), which
       hung the build's prerender and could hang a busy instance.
+      It also means sql.begin can never reserve a connection (postgres.js
+      reserves it from the pipelining check), so nothing here may use
+      sql.begin: transactions are single multi-statement queries instead.
     */
     // @ts-expect-error: postgres.js reads max_pipeline (src/index.js) but its types leave it out.
     max_pipeline: 0,
