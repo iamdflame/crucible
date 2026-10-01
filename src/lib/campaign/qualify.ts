@@ -128,8 +128,11 @@ export function fitsJob(category: Category | null, kind: Kind): boolean {
  * our usual nodes, so the archive is asked only what only it can answer.
  */
 function archive(): PublicClient | null {
+  // With our thirdweb key, sent as thirdweb asks a server to send it; without one, its anonymous, rate-limited endpoint.
+  const secret = process.env.THIRDWEB_SECRET_KEY || process.env.thirdweb_secret;
   const url = process.env.QUALIFY_RPC_URL || process.env.ARCHIVE_RPC_URL || "https://56.rpc.thirdweb.com";
-  return createPublicClient({ chain: bsc, transport: http(url, { retryCount: 2, timeout: 15_000 }) }) as PublicClient;
+  const headers = secret && url.includes("thirdweb.com") ? { "x-secret-key": secret.trim() } : undefined;
+  return createPublicClient({ chain: bsc, transport: http(url, { retryCount: 2, timeout: 15_000, ...(headers ? { fetchOptions: { headers } } : {}) }) }) as PublicClient;
 }
 
 /*
