@@ -36,7 +36,7 @@ export default function QualifyPanel({ tokenId }: { tokenId: string }) {
           return;
         }
         setQ(j.data);
-        if (j.data?.reading && ++tries < 12) setTimeout(read, 8_000);
+        if (j.data?.reading && ++tries < 20) setTimeout(read, 8_000);
       } catch {
         if (!stop) setError("The checks could not be read just now.");
       }

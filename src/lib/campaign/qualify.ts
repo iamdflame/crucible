@@ -147,13 +147,18 @@ function archive(): PublicClient | null {
 let inFlight = 0;
 const waiting: (() => void)[] = [];
 async function gated<T>(fn: () => Promise<T>): Promise<T> {
-  if (inFlight >= 6) await new Promise<void>((ok) => waiting.push(ok));
+  if (inFlight >= 4) await new Promise<void>((ok) => waiting.push(ok));
   inFlight++;
   try {
-    return await fn().catch(async () => {
-      await new Promise((ok) => setTimeout(ok, 400));
-      return fn();
-    });
+    // A refused read is asked again after half a second, one, then two: a burst limit passes, a real failure does not.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (attempt >= 3) throw e;
+        await new Promise((ok) => setTimeout(ok, 500 * 2 ** attempt));
+      }
+    }
   } finally {
     inFlight--;
     waiting.shift()?.();
