@@ -8,7 +8,8 @@
  * pooled sessions "idle in transaction" holding an uncommitted CREATE TABLE,
  * and every later attempt to create that table waited on them. --kill ends
  * sessions idle in a transaction for over two minutes, which rolls back
- * whatever they left uncommitted.
+ * whatever they left uncommitted, and queries waiting over five minutes on a
+ * client that has gone (a serverless instance ended mid-read).
  */
 
 import { sql } from "@/lib/db/client";
@@ -26,7 +27,9 @@ async function main() {
   if (process.argv.includes("--kill")) {
     const killed = (await sql`
       select pid, pg_terminate_backend(pid) as done from pg_stat_activity
-      where datname = current_database() and pid <> pg_backend_pid() and state like 'idle in transaction%' and now() - state_change > interval '2 minutes'`) as { pid: number; done: boolean }[];
+      where datname = current_database() and pid <> pg_backend_pid()
+        and ((state like 'idle in transaction%' and now() - state_change > interval '2 minutes')
+          or (state = 'active' and wait_event_type = 'Client' and now() - state_change > interval '5 minutes'))`) as { pid: number; done: boolean }[];
     console.log("terminated:", killed.map((k) => k.pid).join(", ") || "none");
   }
 }

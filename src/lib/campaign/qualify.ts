@@ -327,7 +327,20 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
     push("fits", "unknown", "No archive node on this deployment.");
   } else {
     const since = registeredAt ?? Math.floor(Date.now() / 1000) - MAX_DAYS * DAY;
-    const acts = await withTimeout(Promise.all(wallets.map((w) => activity(c, w as Address, since).catch((e: Error) => (process.env.QUALIFY_DEBUG && console.error("activity", w, e.message.split("\n")[0]), null)))), 25_000);
+    const started = Date.now();
+    const acts = await withTimeout(
+      Promise.all(
+        wallets.map((w) =>
+          activity(c, w as Address, since).catch((e: Error) => {
+            // Said in the logs, so an archive that refuses us is seen, not guessed at.
+            console.warn(`qualify #${tokenId}: reading ${w} failed: ${e.message.split("\n")[0]!.slice(0, 160)}`);
+            return null;
+          }),
+        ),
+      ),
+      25_000,
+    );
+    if (acts === null) console.warn(`qualify #${tokenId}: reading its wallets took over 25 s (${Date.now() - started} ms)`);
     const read = (acts ?? []).filter((a): a is WalletActivity => Boolean(a));
     if (!read.length) {
       push("executes", "unknown", "Its wallets' transactions could not be read just now.");
