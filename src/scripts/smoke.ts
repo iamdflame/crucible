@@ -180,6 +180,7 @@ async function main() {
   await page("/quest", [
     { name: "all four jobs are offered", test: (h) => (h.match(/x-quest__job"/g) ?? []).length + (h.match(/x-quest__job x-quest__job--done"/g) ?? []).length >= 4 || "fewer than four job cards" },
     { name: "every job has an agent to hire", test: (h) => !h.includes("Nobody can be hired for this job right now") || "a job with nobody to hire" },
+    { name: "BNB's rules and its registration are stated", test: (h) => (h.includes("forms.gle/jzTajVNZEgukeoYT9") && h.includes("different agents")) || "no campaign rules or registration link" },
   ]);
   await page("/graveyard", [
     { name: "failures are listed", test: (h) => h.includes("x-grave__who") || "no rows" },

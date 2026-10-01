@@ -17,32 +17,40 @@ export interface QuestCard {
   ours: boolean;
 }
 
-interface Row {
-  category: string | null;
+interface Counted {
   agentId: string;
   agentName: string | null;
+  category: string | null;
   tx: string | null;
-  onChain: boolean;
-  sponsored: boolean;
 }
 
 interface Progress {
   team: boolean;
-  hired: Record<string, Row | null>;
+  hired: Counted[];
   listed: number;
   best: { agentId: string; name: string | null; rung: number; rungName: string } | null;
-  ratings: number;
+}
+
+/** BNB Chain's Set and Earn rules, as its campaign page states them. */
+export interface Campaign {
+  hires: number;
+  marketplaces: number;
+  register: string;
+  page: string;
+  ends: string;
 }
 
 const short = (tx: string) => `${tx.slice(0, 8)}…${tx.slice(-4)}`;
 
 /**
- * The quest for the connected wallet: four jobs and one listing, each ticked
- * from the tracking API, which counts only the wallet's own hires once the
- * chain confirms them. Re-read while the page is open, since a hire is
- * confirmed a few seconds after it is answered.
+ * Set and Earn for the connected wallet, by BNB Chain's rules: register the
+ * wallet, hire three different agents across at least two shortlisted
+ * marketplaces, and build one agent of your own. Progress here is what
+ * MANDATE can confirm from the chain: different agents this wallet paid for
+ * here, and its own agents listed here. Re-read while the page is open, since
+ * a hire is confirmed a few seconds after it is answered.
  */
-export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
+export default function QuestBoard({ cards, campaign }: { cards: QuestCard[]; campaign: Campaign }) {
   const { address, available, connect } = useWallet();
   const [p, setP] = useState<Progress | null>(null);
 
@@ -52,22 +60,17 @@ export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
       return;
     }
     try {
-      const [h, q] = await Promise.all([
-        fetch(`/api/v1/wallets/${address}/hires`, { cache: "no-store" }).then((r) => r.json()),
-        fetch(`/api/v1/quest/${address}`, { cache: "no-store" }).then((r) => r.json()),
-      ]);
-      const rows = ((h?.data?.hires ?? []) as Row[]).filter((r) => r.onChain && !r.sponsored);
+      const q = await fetch(`/api/v1/quest/${address}`, { cache: "no-store" }).then((r) => r.json());
       setP({
         team: Boolean(q?.data?.team),
-        hired: Object.fromEntries(cards.map((c) => [c.category, rows.find((r) => r.category === c.category) ?? null])),
+        hired: (q?.data?.agentsHired ?? []) as Counted[],
         listed: Number(q?.data?.agentsListed ?? 0),
         best: q?.data?.bestAgent ?? null,
-        ratings: Number(q?.data?.ratingsGiven ?? 0),
       });
     } catch {
       /* the last reading stands */
     }
-  }, [address, cards]);
+  }, [address]);
 
   useEffect(() => {
     void read();
@@ -80,9 +83,11 @@ export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
     return () => clearInterval(t);
   }, [address, read]);
 
-  const jobsDone = p ? cards.filter((c) => p.hired[c.category]).length : 0;
-  const steps = cards.length + 1;
-  const stepsDone = jobsDone + (p && p.listed > 0 ? 1 : 0);
+  const hiredHere = p && !p.team ? p.hired.length : 0;
+  const built = Boolean(p && p.listed > 0);
+  // Two of the three can be here; the third has to be on another shortlisted marketplace.
+  const roomHere = campaign.hires - (campaign.marketplaces - 1);
+  const hiredCategories = new Set((p?.hired ?? []).map((h) => h.category));
 
   return (
     <div className="x-quest">
@@ -90,20 +95,21 @@ export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
         {address && p ? (
           <>
             <p className="x-quest__count">
-              <span className="x-mono">{jobsDone}</span> of {cards.length} jobs hired{p.listed > 0 ? ", agent listed" : ""}
+              <span className="x-mono">{Math.min(hiredHere, campaign.hires)}</span> of {campaign.hires} different agents hired here
+              {built ? ", your agent listed" : ""}
             </p>
             <div className="x-quest__meter" aria-hidden="true">
-              {Array.from({ length: steps }, (_, i) => (
-                <span key={i} className={i < stepsDone ? "x-quest__seg x-quest__seg--on" : "x-quest__seg"} />
+              {Array.from({ length: campaign.hires + 1 }, (_, i) => (
+                <span key={i} className={(i < campaign.hires ? i < hiredHere : built) ? "x-quest__seg x-quest__seg--on" : "x-quest__seg"} />
               ))}
             </div>
-            {p.team ? <p className="x-quest__note">This is one of MANDATE&apos;s own wallets, so it never counts toward the quest.</p> : null}
+            {p.team ? <p className="x-quest__note">This is one of MANDATE&apos;s own wallets, so it never counts toward the campaign.</p> : null}
           </>
         ) : address ? (
           <p className="x-quest__count">Reading your hires from the chain…</p>
         ) : (
           <>
-            <p className="x-quest__count">Connect a wallet to see your progress.</p>
+            <p className="x-quest__count">Connect your campaign wallet to see your progress.</p>
             {available ? (
               <button type="button" className="x-btn x-btn--primary" onClick={connect}>
                 Connect wallet
@@ -117,27 +123,83 @@ export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
         )}
       </div>
 
+      <ol className="x-quest__steps">
+        <li className="x-quest__step">
+          <p className="x-quest__n x-mono">1</p>
+          <div>
+            <h2 className="x-quest__label">Register your campaign wallet</h2>
+            <p className="x-quest__agent">
+              With BNB Chain, before anything else: your name, the one wallet you will use, and a public GitHub. Actions from a wallet that is not registered are not
+              counted.
+            </p>
+            <a className="x-btn x-btn--sm" href={campaign.register} target="_blank" rel="noreferrer">
+              Register with BNB Chain
+            </a>
+          </div>
+        </li>
+        <li className={hiredHere >= roomHere ? "x-quest__step x-quest__step--done" : "x-quest__step"}>
+          <p className="x-quest__n x-mono">{hiredHere >= roomHere ? <Check size={14} strokeWidth={3} aria-label="Done here" /> : 2}</p>
+          <div>
+            <h2 className="x-quest__label">
+              Hire {campaign.hires} different agents, on at least {campaign.marketplaces} marketplaces
+            </h2>
+            <p className="x-quest__agent">
+              MANDATE is one of the shortlisted marketplaces: up to {roomHere} of your hires can be here, and at least one has to be on another (they are listed on{" "}
+              <a className="x-link" href={campaign.page} target="_blank" rel="noreferrer">
+                BNB Chain&apos;s campaign page
+              </a>
+              ). Each hire has to be of a different agent, paid from your campaign wallet.
+            </p>
+            {p && p.hired.length ? (
+              <ul className="x-quest__hired">
+                {p.hired.map((h) => (
+                  <li key={h.agentId} className="x-quest__done">
+                    <Check size={13} strokeWidth={3} aria-hidden="true" /> {h.agentName ?? `#${h.agentId}`}
+                    {h.tx ? (
+                      <>
+                        {" · "}
+                        <a className="x-link x-mono" href={`https://bscscan.com/tx/${h.tx}`} target="_blank" rel="noreferrer">
+                          {short(h.tx)}
+                        </a>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </li>
+        <li className={built ? "x-quest__step x-quest__step--done" : "x-quest__step"}>
+          <p className="x-quest__n x-mono">{built ? <Check size={14} strokeWidth={3} aria-label="Listed" /> : 3}</p>
+          <div>
+            <h2 className="x-quest__label">Build one agent of your own</h2>
+            <p className="x-quest__agent">
+              Registered on ERC-8004 from your campaign wallet and listed here. BNB Chain checks it after the campaign: a card stating its job, live when called,
+              hired by three wallets that are not yours, and at least five onchain actions on three different days that fit its job. An agent that only answers does
+              not count.
+            </p>
+            {built && p?.best ? (
+              <p className="x-quest__done">
+                {p.best.name ?? `#${p.best.agentId}`} is listed here, on the {p.best.rungName} rung.
+              </p>
+            ) : p?.best ? (
+              <p className="x-quest__agent">#{p.best.agentId} is registered, but its card does not parse yet, so it has no name here.</p>
+            ) : null}
+            <Link className="x-btn x-btn--sm" href={p?.best ? `/list?id=${p.best.agentId}` : "/build"}>
+              {p?.best ? "See what it still needs" : "Build and list one"}
+            </Link>
+          </div>
+        </li>
+      </ol>
+
+      <h2 className="x-quest__h">Agents you can hire here</h2>
       <ol className="x-quest__jobs">
-        {cards.map((c, i) => {
-          const hired = p?.hired[c.category] ?? null;
+        {cards.map((c) => {
+          const hired = hiredCategories.has(c.category);
           const hash = `#hire-${c.category}`;
           return (
             <li key={c.category} className={hired ? "x-quest__job x-quest__job--done" : "x-quest__job"}>
-              <p className="x-quest__n x-mono">{hired ? <Check size={14} strokeWidth={3} aria-label="Done" /> : i + 1}</p>
-              <h2 className="x-quest__label">{c.label}</h2>
-              {hired ? (
-                <p className="x-quest__done">
-                  Hired {hired.agentName ?? `#${hired.agentId}`}
-                  {hired.tx ? (
-                    <>
-                      {" · "}
-                      <a className="x-link x-mono" href={`https://bscscan.com/tx/${hired.tx}`} target="_blank" rel="noreferrer">
-                        {short(hired.tx)}
-                      </a>
-                    </>
-                  ) : null}
-                </p>
-              ) : null}
+              <h3 className="x-quest__label">{c.label}</h3>
               {c.offer ? (
                 <>
                   <p className="x-quest__agent">
@@ -148,7 +210,7 @@ export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
                   </p>
                   {c.price ? <p className="x-quest__price">{c.price}</p> : null}
                   <a className={hired ? "x-btn x-btn--block" : "x-btn x-btn--primary x-btn--block"} href={hash}>
-                    {hired ? "Hire again" : "Hire"}
+                    Hire
                   </a>
                   {c.others ? (
                     <Link className="x-quest__alt" href={`/agents?category=${c.category}&hireable=1`}>
@@ -163,29 +225,13 @@ export default function QuestBoard({ cards }: { cards: QuestCard[] }) {
             </li>
           );
         })}
-        <li className={p && p.listed > 0 ? "x-quest__job x-quest__job--done x-quest__job--build" : "x-quest__job x-quest__job--build"}>
-          <p className="x-quest__n x-mono">{p && p.listed > 0 ? <Check size={14} strokeWidth={3} aria-label="Done" /> : cards.length + 1}</p>
-          <h2 className="x-quest__label">List your agent</h2>
-          {p && p.listed > 0 && p.best ? (
-            <p className="x-quest__done">
-              {p.best.name ?? `#${p.best.agentId}`} is listed, on the {p.best.rungName} rung.
-            </p>
-          ) : p?.best ? (
-            <p className="x-quest__agent">#{p.best.agentId} is registered, but its card does not parse yet, so it has no name here.</p>
-          ) : (
-            <p className="x-quest__agent">Deploy the starter, register it from this wallet, and it is listed here within minutes.</p>
-          )}
-          <Link className={p && p.listed > 0 ? "x-btn x-btn--block" : "x-btn x-btn--primary x-btn--block"} href={p?.best ? `/list?id=${p.best.agentId}` : "/build"}>
-            {p?.best ? "See what moves it up" : "Build and register one"}
-          </Link>
-        </li>
       </ol>
 
       <NeedHelp />
       <p className="x-quest__fine">
-        Counted from hires your own wallet paid, once the chain confirms them. Each hire opens as an escrowed job where the agent takes one: the ERC-8183
-        contract records it against the agent and this site, so it counts without anyone taking our word for it. Calls MANDATE pays for do not count. The same record
-        answers at{" "}
+        Counted here from hires your own wallet paid on MANDATE, once the chain confirms them, each of a different agent and never of an agent you own. Calls MANDATE
+        pays for do not count. Hires on other marketplaces, and your agent&apos;s own checks, are counted by BNB Chain from the chain; its determination is final.
+        The campaign runs to {new Date(campaign.ends).toUTCString().slice(5, 16)}, 12:00 UTC. The same record answers at{" "}
         <span className="x-mono">/api/v1/quest/{"{address}"}</span>.
       </p>
     </div>

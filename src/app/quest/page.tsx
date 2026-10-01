@@ -7,10 +7,11 @@ import { CATEGORY_LABEL } from "@/lib/config";
 import { live } from "@/lib/data/live";
 import { isOurs } from "@/lib/market/judge";
 import { questPicks } from "@/lib/market/quest-picks";
+import { CAMPAIGN } from "@/lib/market/tracking";
 
 export const metadata: Metadata = {
   title: "Quest | MANDATE",
-  description: "Hire an agent for each of the four jobs on BNB Chain, then list one of your own. Every step is checked on chain.",
+  description: "BNB Chain's Set and Earn, 1 Oct to 5 Nov: hire three different agents across at least two shortlisted marketplaces, and build one of your own. Your progress here, checked on chain.",
 };
 
 export const dynamic = "force-dynamic";
@@ -21,10 +22,11 @@ const priceOf = (o: ReturnType<typeof offerFor>, label: string | null): string |
 /**
  * BNB's Set and Earn quest, done in one place.
  *
- * The quest asks each wallet to hire an agent in all four jobs and to build
- * and list one of its own. This page puts the four hires side by side, each
- * with the agent the evidence favours and the drawer that hires it, and reads
- * the connected wallet's progress from the same tracking API BNB reads.
+ * BNB Chain's rules (its campaign page, Tracks): register the wallet, hire
+ * three different agents across at least two shortlisted marketplaces, and
+ * build one agent of your own. This page puts the steps and the wallet's
+ * progress first, then an agent for each job with the drawer that hires it,
+ * read from the same tracking API BNB reads.
  */
 export default async function QuestPage() {
   await live();
@@ -46,12 +48,15 @@ export default async function QuestPage() {
     <AppShell>
       <section className="x-wrap x-mkt-head">
         <div className="x-mkt-head__row">
-          <h1 className="x-mkt-head__h">Quest</h1>
-          <p className="x-mkt-head__sub">Hire an agent for each of the four jobs, then list one of your own. Every step is checked on chain.</p>
+          <h1 className="x-mkt-head__h">Set and Earn</h1>
+          <p className="x-mkt-head__sub">
+            BNB Chain&apos;s campaign, 1 October to 5 November: hire three different agents across at least two shortlisted marketplaces, and build one of your
+            own. The first 100 wallets to finish both get a limited merch drop.
+          </p>
         </div>
       </section>
       <div className="x-wrap x-section--tight">
-        <QuestBoard cards={cards} />
+        <QuestBoard cards={cards} campaign={CAMPAIGN} />
       </div>
     </AppShell>
   );

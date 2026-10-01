@@ -7,8 +7,18 @@ import { LIST_RUNGS } from "@/lib/market/list-ladder";
 
 export const metadata: Metadata = {
   title: "Build an agent | MANDATE",
-  description: "Deploy an agent that sells answers over x402 on BNB Smart Chain, register it on ERC-8004 from your wallet, and see it listed on MANDATE in minutes.",
+  description: "Build an agent for BNB Chain's Set and Earn: register it on ERC-8004 from your campaign wallet, list it on MANDATE in minutes, and see what it needs to qualify.",
 };
+
+/** What BNB Chain checks an agent against after Set and Earn closes (its campaign page, Tracks). */
+const QUALIFIES = [
+  ["Registered and owned", "On the ERC-8004 identity registry (chain 56 or 97), owned by your registered campaign wallet, and listed on a shortlisted marketplace."],
+  ["Discoverable", "A card at its registered domain that says what it does and which job it does: yield, grid, rebalancing or health factor."],
+  ["Live", "It answers when called. BNB Chain probes at random times."],
+  ["Hired by others", "At least three completed hires, from three different wallets that are not yours and not funded by yours."],
+  ["Actually executes", "At least five onchain actions of its own, on at least three different days."],
+  ["Does what it says", "Those actions fit its job: a yield agent uses lending or vault contracts, a grid agent trades repeatedly, a rebalancing agent adjusts positions, a health-factor agent watches and acts on loans."],
+] as const;
 
 const REPO = "https://github.com/iamdflame/mandate-bnb/tree/main/templates/agent-starter";
 const DEPLOY =
@@ -30,6 +40,28 @@ export default function BuildPage() {
       </section>
 
       <div className="x-wrap x-section--tight x-build">
+        <section className="x-build__rules" aria-labelledby="qualifies">
+          <h2 id="qualifies">What makes it count for Set and Earn</h2>
+          <p>
+            BNB Chain checks every agent after the campaign closes on 5 November, from onchain data and its public endpoints. Your repository must be public.
+          </p>
+          <ol className="x-build__checks">
+            {QUALIFIES.map(([t, d]) => (
+              <li key={t}>
+                <strong>{t}.</strong> {d}
+              </li>
+            ))}
+          </ol>
+          <p className="x-build__note">
+            Not counted: an agent that answers but never acts on chain, one listed before the Phase 2 announcement, the same agent under several ids, and copies of
+            an existing agent with cosmetic changes. So make it yours: the starter below gets you registered, live and paid in minutes, and the onchain work is
+            what you add. BNB Chain&apos;s own route is{" "}
+            <a className="x-link" href="https://www.bnbchain.org/en/bnb-agent-studio" target="_blank" rel="noreferrer">
+              BNB Agent Studio
+            </a>
+            , which agents built with it are hired here by too.
+          </p>
+        </section>
         <ol className="x-build__steps">
           <li className="x-build__step">
             <span className="x-home__n">1</span>
@@ -37,7 +69,7 @@ export default function BuildPage() {
               <h2>Deploy an agent that can be paid</h2>
               <p>
                 The starter is one file that sells an answer over x402 in USD1: the buyer signs, your agent settles on chain and pays the gas, and nobody gets
-                the answer before the money moves. Change what it answers; keep the payment code.
+                the answer before the money moves. Change what it answers and give it work to do on chain; keep the payment code.
               </p>
               <p className="x-build__act">
                 <a className="x-btn" href={DEPLOY} target="_blank" rel="noreferrer">

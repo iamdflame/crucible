@@ -237,9 +237,49 @@ export async function agentsOf(owner: string): Promise<OwnedAgent[]> {
   return [...byId.values()].sort((a, b) => Number(a.agentId) - Number(b.agentId));
 }
 
+/** BNB Chain's Set and Earn rules (1 Oct to 5 Nov 2026): three different agents, across at least two shortlisted marketplaces, and one agent of your own. */
+export const CAMPAIGN = {
+  hires: 3,
+  marketplaces: 2,
+  register: "https://forms.gle/jzTajVNZEgukeoYT9",
+  page: "https://www.bnbchain.org/en/hackathons/smart-money-era-set-and-earn?tab=tracks",
+  ends: "2026-11-05T12:00:00Z",
+} as const;
+
+export interface CountedHire {
+  agentId: string;
+  agentName: string | null;
+  category: Category | null;
+  kind: HireKind;
+  tx: string | null;
+  at: string | null;
+}
+
+/**
+ * The hires that count toward the campaign, as MANDATE can see them: paid by
+ * the wallet itself and confirmed on chain, each of a different agent, and
+ * never of an agent the wallet owns (a builder hiring their own agent is
+ * excluded by the rules). The earliest hire of each agent stands for it.
+ * Pure, for tests.
+ */
+export function countedHires(hires: HireRow[], owned: string[]): CountedHire[] {
+  const mine = new Set(owned);
+  const byAgent = new Map<string, CountedHire>();
+  const ordered = [...hires].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
+  for (const h of ordered) {
+    if (!h.onChain || h.sponsored || mine.has(h.agentId) || byAgent.has(h.agentId)) continue;
+    byAgent.set(h.agentId, { agentId: h.agentId, agentName: h.agentName, category: h.category, kind: h.kind, tx: h.tx, at: h.at });
+  }
+  return [...byAgent.values()];
+}
+
 export interface QuestProgress {
   wallet: string;
   team: boolean;
+  /** Different agents this wallet hired here with its own money, confirmed on chain, its own agents left out. */
+  agentsHired: CountedHire[];
+  /** The campaign asks for this many different agents, across at least `marketplaces` shortlisted marketplaces; MANDATE is one. */
+  campaign: { hires: number; marketplaces: number; register: string; page: string; ends: string };
   /** Hires of an agent in each job, from the wallet's own paid hires. */
   hired: Record<Category, boolean>;
   allFourHired: boolean;
@@ -248,11 +288,19 @@ export interface QuestProgress {
   /** The wallet's agent highest on the listing ladder. */
   bestAgent: { agentId: string; name: string | null; rung: number; rungName: string } | null;
   ratingsGiven: number;
+  /** The quest as first drafted: an agent hired in all four jobs and one listed. Kept for readers of this API; the campaign's own rule is `campaign`. */
   complete: boolean;
+  /**
+   * What MANDATE can confirm toward the campaign: different agents hired here,
+   * and whether an agent of this wallet's own is listed here. Hires on other
+   * marketplaces, and the build's own checks, are counted by BNB Chain.
+   */
+  here: { hires: number; agentListed: boolean };
 }
 
 export async function questOf(wallet: string): Promise<QuestProgress> {
   const [h, owned] = await Promise.all([hiresOf(wallet), agentsOf(wallet)]);
+  const agentsHired = countedHires(h.hires, owned.map((a) => a.agentId));
   const hired = Object.fromEntries(CATEGORIES.map((c) => [c, h.byCategory[c] > 0])) as Record<Category, boolean>;
   const allFourHired = CATEGORIES.every((c) => hired[c]);
   const listed = owned.filter((a) => a.rung >= 1);
@@ -260,11 +308,14 @@ export async function questOf(wallet: string): Promise<QuestProgress> {
   return {
     wallet: h.wallet,
     team: h.team,
+    agentsHired,
+    campaign: CAMPAIGN,
     hired,
     allFourHired,
     agentsListed: listed.length,
     bestAgent: best ? { agentId: best.agentId, name: best.name, rung: best.rung, rungName: best.rungName } : null,
     ratingsGiven: h.ratings.length,
     complete: allFourHired && listed.length > 0 && !h.team,
+    here: { hires: h.team ? 0 : agentsHired.length, agentListed: listed.length > 0 },
   };
 }
