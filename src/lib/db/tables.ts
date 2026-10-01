@@ -167,6 +167,29 @@ const STATEMENTS: { name: string; run: () => Promise<unknown> }[] = [
     },
   },
   {
+    // Every job funded on the ERC-8183 kernel, whoever opened it: who is hiring whom across marketplaces, for the Set and Earn checks.
+    name: "kernel_jobs",
+    run: async () => {
+      await pg!`
+        create table if not exists kernel_jobs (
+          job_id text primary key,
+          client text not null,
+          provider text not null,
+          amount text not null,
+          block bigint not null,
+          tx text not null,
+          at timestamptz not null default now()
+        )
+      `;
+      await pg!`create index if not exists kernel_jobs_provider on kernel_jobs (provider)`;
+    },
+  },
+  {
+    // An agent's Set and Earn checks, kept for half an hour: the onchain part costs dozens of archive reads.
+    name: "qualifications",
+    run: () => pg!`create table if not exists qualifications (token_id text primary key, payload jsonb not null, at timestamptz not null default now())`,
+  },
+  {
     // MANDATE's conformance checks: each agent's answer to the same public question, checked against our own chain reading.
     name: "conformance_runs",
     run: async () => {

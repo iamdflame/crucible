@@ -601,6 +601,23 @@ async function fundTxOf(jobId: bigint): Promise<Hash | null> {
 }
 
 /**
+ * Every funded job the watcher reads, whoever opened it and on whichever
+ * marketplace: the kernel is shared, so this is who hired whom across all of
+ * them, for an agent's Set and Earn checks.
+ */
+export async function indexKernelJobs(logs: { args: { jobId: bigint; client: Address; provider: Address; amount: bigint }; blockNumber: bigint | null; transactionHash: Hash | null }[]): Promise<number> {
+  if (!pg || !logs.length) return 0;
+  await ensureTables();
+  const rows = logs
+    .filter((l) => l.blockNumber !== null && l.transactionHash)
+    .map((l) => ({ job_id: l.args.jobId.toString(), client: l.args.client.toLowerCase(), provider: l.args.provider.toLowerCase(), amount: l.args.amount.toString(), block: Number(l.blockNumber), tx: l.transactionHash!.toLowerCase() }));
+  for (let i = 0; i < rows.length; i += 500) {
+    await pg`insert into kernel_jobs ${pg(rows.slice(i, i + 500), "job_id", "client", "provider", "amount", "block", "tx")} on conflict (job_id) do nothing`;
+  }
+  return rows.length;
+}
+
+/**
  * Reads the kernel's JobFunded events since the last pass and takes on every
  * job funded to one of our agents. The block read up to is kept, and moved
  * only past ranges every node answered, so a refused range is read again
@@ -615,8 +632,9 @@ export async function watchFunded(opts: { budgetMs: number }): Promise<string> {
   const from = kept ? BigInt(kept) + 1n : head - 2_000n;
   if (from > head) return "up to date";
   const to = head - from > 20_000n ? from + 20_000n : head;
-  const scan = await scanLogs<Log & { args: { jobId: bigint; provider: Address } }>({ address: ESCROW.commerce, event: JOB_FUNDED, fromBlock: from, toBlock: to, span: 1_999n });
+  const scan = await scanLogs<Log & { args: { jobId: bigint; client: Address; provider: Address; amount: bigint } }>({ address: ESCROW.commerce, event: JOB_FUNDED, fromBlock: from, toBlock: to, span: 1_999n });
   if (!scan.complete) return `${scan.refused} of ${scan.ranges} ranges refused; read again next pass`;
+  await indexKernelJobs(scan.logs).catch(() => undefined);
   const ours = scan.logs.filter((l) => providers().has(l.args.provider.toLowerCase()));
   const done: string[] = [];
   for (const l of ours) {

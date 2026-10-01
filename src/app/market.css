@@ -7047,3 +7047,79 @@ a.x-house__name:hover {
 .x-build__checks strong {
   color: var(--c-text);
 }
+
+/* An agent against BNB Chain's Set and Earn build checks. */
+.x-qualify {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-6);
+  border: 1px solid var(--c-line-faint);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+.x-qualify__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.x-qualify__score {
+  color: var(--c-text-2);
+  font-size: var(--ts-sm);
+}
+.x-qualify__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.x-qualify__row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--s-3);
+}
+.x-qualify__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
+}
+.x-qualify__row--pass .x-qualify__icon {
+  background: var(--c-ok-soft);
+  color: var(--c-ok);
+}
+.x-qualify__row--pending .x-qualify__icon {
+  color: var(--c-warn);
+}
+.x-qualify__row--fail .x-qualify__icon {
+  background: var(--c-err-soft);
+  color: var(--c-err);
+}
+.x-qualify__label {
+  font-weight: 600;
+}
+.x-qualify__state {
+  margin-left: var(--s-2);
+  color: var(--c-text-3);
+  font-size: var(--ts-xs);
+  font-weight: 500;
+}
+.x-qualify__detail {
+  color: var(--c-text-2);
+  font-size: var(--ts-sm);
+  overflow-wrap: anywhere;
+}
+.x-qualify__acts {
+  list-style: none;
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-1);
+  font-size: var(--ts-sm);
+  color: var(--c-text-2);
+}

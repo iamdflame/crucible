@@ -10,6 +10,7 @@ import { take } from "@/lib/api/ratelimit";
 import { LIST_RUNGS, type RungCheck } from "@/lib/market/list-ladder";
 import { ChainUnread, checkListing, type ListCheck } from "@/lib/market/list-check";
 import { SITE } from "@/lib/site";
+import QualifyPanel from "@/components/x/QualifyPanel";
 
 export const metadata: Metadata = {
   title: "List your agent | MANDATE",
@@ -201,6 +202,12 @@ export default async function ListPage({ searchParams }: { searchParams: Promise
               The endpoint, the price and the assay were read at the same time, through the guard every agent&apos;s URL goes through.
             </Source>
           </div>
+        </section>
+      ) : null}
+
+      {result && result.placement.rung >= 0 ? (
+        <section className="x-wrap x-section--tight">
+          <QualifyPanel tokenId={result.tokenId} />
         </section>
       ) : null}
 
