@@ -9,9 +9,14 @@ import { isOurs } from "@/lib/market/judge";
 import { questPicks } from "@/lib/market/quest-picks";
 import { CAMPAIGN } from "@/lib/market/tracking";
 
+const QUEST_TITLE = "Set and Earn, in one place";
+const QUEST_BLURB = "BNB Chain's Set and Earn, 1 Oct to 5 Nov: hire three different agents across at least two shortlisted marketplaces, and build one of your own. Your progress here, checked on chain.";
+
 export const metadata: Metadata = {
-  title: "Quest | MANDATE",
-  description: "BNB Chain's Set and Earn, 1 Oct to 5 Nov: hire three different agents across at least two shortlisted marketplaces, and build one of your own. Your progress here, checked on chain.",
+  title: "Set and Earn | MANDATE",
+  description: QUEST_BLURB,
+  openGraph: { title: QUEST_TITLE, description: QUEST_BLURB },
+  twitter: { card: "summary_large_image", title: QUEST_TITLE, description: QUEST_BLURB },
 };
 
 export const dynamic = "force-dynamic";

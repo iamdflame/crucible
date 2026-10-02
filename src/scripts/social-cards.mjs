@@ -64,7 +64,14 @@ const foot = (url) => `<div class="foot"><span class="pill"><i></i>BNB Smart Cha
 const OG = "--w:1200px;--h:630px;--pad:72px 80px;--brand:34px;--h1:76px;--h1w:1000px;--sub:28px;--subw:960px;--small:20px;";
 const HERO = "--w:1600px;--h:900px;--pad:84px 96px;--brand:38px;--h1:92px;--h1w:820px;--sub:30px;--subw:760px;--small:22px;";
 
+const END = "--w:1280px;--h:720px;--pad:80px 88px;--brand:34px;--h1:78px;--h1w:1100px;--sub:28px;--subw:1000px;--small:22px;";
+
 const CARDS = {
+  "video-end": {
+    size: [1280, 720],
+    out: [join(PROMO, "end-card.png")],
+    html: shell(END, `${brand}<h1>Check your agent before BNB Chain does.</h1><p class="sub">Six checks, read from the chain. Free, nothing to sign.</p>${foot("mandatemarkets.com/check")}`),
+  },
   "check-og": {
     size: [1200, 630],
     out: ["src/app/check/opengraph-image.png", "src/app/check/twitter-image.png"],
