@@ -18,6 +18,7 @@ import { warm } from "@/lib/data/snapshots";
 import { warmRegistry } from "@/lib/registry/tail";
 import { warmOutcomes } from "@/lib/market/hire-law";
 import { withTimeout } from "@/lib/cache";
+import { countCheck } from "@/lib/ops/arrivals";
 
 // The census (live, priced), the registry tail and paid calls, as they stand now rather than as committed.
 const fresh = () => withTimeout(Promise.all([warm().catch(() => undefined), warmRegistry().catch(() => undefined), warmOutcomes().catch(() => undefined)]), 9_000);
@@ -37,6 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   if (!g.allowed) return g.response;
   const { tokenId } = await params;
   if (!/^\d{1,12}$/.test(tokenId)) return fail(400, "tokenId must be an ERC-8004 id.", CHAIN_ID, g.headers);
+  after(() => countCheck(tokenId));
   const kept = await cachedQualification(tokenId);
   if (kept) return ok(kept, { chainId: CHAIN_ID, at: kept.at }, g.headers);
   // Read in full after the reply, by one invocation at a time per agent.

@@ -10,6 +10,7 @@ import { agentsOf } from "@/lib/market/tracking";
 import { QUALIFIES } from "@/lib/campaign/rules";
 import { CATEGORY_LABEL, type Category } from "@/lib/config";
 import { withTimeout } from "@/lib/cache";
+import { countArrival } from "@/lib/ops/arrivals";
 
 const TITLE = "Does your agent qualify for Set and Earn?";
 const BLURB = "BNB Chain checks every Set and Earn agent after the campaign closes on 5 November. Check yours now against the same six things, read from the chain, while there is still time to fix it.";
@@ -34,6 +35,7 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
  */
 export default async function CheckPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
+  await countArrival("/check", sp);
   const raw = (first(sp.q) ?? first(sp.id) ?? first(sp.wallet) ?? "").trim();
   const id = /^\d{1,12}$/.test(raw) ? raw : null;
   const wallet = /^0x[0-9a-fA-F]{40}$/.test(raw) ? raw : null;

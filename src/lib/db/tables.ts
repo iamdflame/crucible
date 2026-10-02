@@ -190,6 +190,16 @@ const STATEMENTS: { name: string; run: () => Promise<unknown> }[] = [
     run: () => pg!`create table if not exists qualifications (token_id text primary key, payload jsonb not null, at timestamptz not null default now())`,
   },
   {
+    // Arrivals at the campaign pages per day, by where they came from (an ad's utm tags, the referring site, or direct). Counts only: no cookie, no address, nothing about the visitor.
+    name: "arrivals",
+    run: () => pg!`create table if not exists arrivals (day date not null, path text not null, source text not null, n integer not null default 0, primary key (day, path, source))`,
+  },
+  {
+    // Which agents had a Set and Earn check each day: how many builders the check reaches.
+    name: "checks_daily",
+    run: () => pg!`create table if not exists checks_daily (day date not null, token_id text not null, primary key (day, token_id))`,
+  },
+  {
     // MANDATE's conformance checks: each agent's answer to the same public question, checked against our own chain reading.
     name: "conformance_runs",
     run: async () => {

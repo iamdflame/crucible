@@ -8,6 +8,7 @@ import { live } from "@/lib/data/live";
 import { isOurs } from "@/lib/market/judge";
 import { questPicks } from "@/lib/market/quest-picks";
 import { CAMPAIGN } from "@/lib/market/tracking";
+import { countArrival } from "@/lib/ops/arrivals";
 
 const QUEST_TITLE = "Set and Earn, in one place";
 const QUEST_BLURB = "BNB Chain's Set and Earn, 1 Oct to 5 Nov: hire three different agents across at least two shortlisted marketplaces, and build one of your own. Your progress here, checked on chain.";
@@ -33,7 +34,8 @@ const priceOf = (o: ReturnType<typeof offerFor>, label: string | null): string |
  * progress first, then an agent for each job with the drawer that hires it,
  * read from the same tracking API BNB reads.
  */
-export default async function QuestPage() {
+export default async function QuestPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  await countArrival("/quest", await searchParams);
   await live();
   const picks = await questPicks();
   const cards: QuestCard[] = picks.map((p) => {
