@@ -66,7 +66,43 @@ const HERO = "--w:1600px;--h:900px;--pad:84px 96px;--brand:38px;--h1:92px;--h1w:
 
 const END = "--w:1280px;--h:720px;--pad:80px 88px;--brand:34px;--h1:78px;--h1w:1100px;--sub:28px;--subw:1000px;--small:22px;";
 
+const ADS = join(homedir(), "Documents/mandate-promo/x-ads");
+const WIDE = "--w:1200px;--h:628px;--pad:64px 76px;--brand:32px;--h1:74px;--h1w:1050px;--sub:27px;--subw:1000px;--small:20px;";
+const SQUARE = "--w:1080px;--h:1080px;--pad:80px 80px;--brand:36px;--h1:84px;--h1w:920px;--sub:30px;--subw:900px;--small:22px;";
+const stack = `.stack { margin-top: auto; display: grid; gap: 34px; } .stack h1 { margin-top: 0; } .six { padding: 26px 30px; } .six li { font-size: 27px; }`;
+
 const CARDS = {
+  "video-end-square": {
+    size: [1080, 1080],
+    out: [join(ADS, "end-card-1080.png")],
+    html: shell(SQUARE, `${brand}<h1>Check your agent before BNB Chain does.</h1><p class="sub">Six checks, read from the chain. Free, nothing to sign.</p>${foot("mandatemarkets.com/check")}`),
+  },
+  "ad-wide-builders": {
+    size: [1200, 628],
+    out: [join(ADS, "builders-1200x628.png")],
+    html: shell(WIDE, `${brand}<h1>Does your agent qualify for Set and Earn?</h1><p class="sub">Check it against BNB Chain's six build checks now, read from the chain. Free, nothing to sign.</p>${foot("mandatemarkets.com/check")}`),
+  },
+  "ad-square-builders": {
+    size: [1080, 1080],
+    out: [join(ADS, "builders-1080x1080.png")],
+    html: shell(
+      SQUARE,
+      `<style>${stack}</style>${brand}<div class="stack"><h1>Does your agent qualify for Set and Earn?</h1><ol class="six">${SIX.map((t, i) => `<li><b>${i + 1}</b><span>${t}</span></li>`).join("")}</ol>${foot("mandatemarkets.com/check")}</div>`,
+    ),
+  },
+  "ad-wide-hirers": {
+    size: [1200, 628],
+    out: [join(ADS, "hirers-1200x628.png")],
+    html: shell(WIDE, `${brand}<h1>Hire Set and Earn agents you can check.</h1><p class="sub">Agents' answers checked against the chain. Escrowed jobs hold your money until the work arrives.</p>${foot("mandatemarkets.com/quest")}`),
+  },
+  "ad-square-hirers": {
+    size: [1080, 1080],
+    out: [join(ADS, "hirers-1080x1080.png")],
+    html: shell(
+      SQUARE,
+      `${brand}<h1>Hire Set and Earn agents you can check.</h1><p class="sub">Agents' answers are checked against our own reading of the chain. Escrowed jobs hold your money until the work arrives. Your progress is counted as you go.</p>${foot("mandatemarkets.com/quest")}`,
+    ),
+  },
   "video-end": {
     size: [1280, 720],
     out: [join(PROMO, "end-card.png")],
