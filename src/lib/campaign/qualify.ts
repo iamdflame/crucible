@@ -239,7 +239,13 @@ async function findTx(c: PublicClient, wallet: Address, nonce: number, from: big
       if (first > 0) lo = points[first - 1]!;
     }
   }
-  const block = await marketClient.getBlock({ blockNumber: hi, includeTransactions: true });
+  // A whole block, transactions and all: our everyday node refuses some of these in production, so the archive is asked when it does.
+  const block = await marketClient
+    .getBlock({ blockNumber: hi, includeTransactions: true })
+    .catch(() => gated(() => c.getBlock({ blockNumber: hi, includeTransactions: true })))
+    .catch((e: Error) => {
+      throw new Error(`reading block ${hi}: ${e.message.split("\n")[0]}`);
+    });
   const tx = block.transactions.find((t) => typeof t !== "string" && t.from.toLowerCase() === wallet.toLowerCase() && Number(t.nonce) === nonce);
   return tx && typeof tx !== "string" ? { hash: tx.hash, to: tx.to ?? null, input: tx.input, at: Number(block.timestamp) } : null;
 }
