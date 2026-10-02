@@ -42,11 +42,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   // Read in full after the reply, by one invocation at a time per agent.
   await fresh();
   /*
-    One full check at a time across every instance: each reads an archive
-    that refuses bursts, and four at once failed (1 Oct). A check that finds
-    the lease taken is picked up by the page's next poll, which asks again.
+    At most four full checks at once across every instance: each reads an
+    archive that refuses bursts. Anonymous, four at once failed (1 Oct); with
+    our key, 32 reads at once all answered (2 Oct), and four checks at six
+    reads each stay under that. A check that finds every slot taken is picked
+    up by the page's next poll, which asks again.
   */
-  after(() => withLease("qualify:archive", 75, () => qualify(tokenId, { fresh: true })).then(() => undefined, () => undefined));
+  after(async () => {
+    for (const slot of [1, 2, 3, 4]) {
+      const ran = await withLease(`qualify:archive:${slot}`, 75, () => qualify(tokenId, { fresh: true })).catch(() => null);
+      if (ran !== null) return;
+    }
+  });
   const quick = await quickQualification(tokenId);
   return ok(quick, { chainId: CHAIN_ID, at: quick.at }, g.headers);
 }

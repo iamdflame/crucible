@@ -182,6 +182,10 @@ async function main() {
     { name: "every job has an agent to hire", test: (h) => !h.includes("Nobody can be hired for this job right now") || "a job with nobody to hire" },
     { name: "BNB's rules and its registration are stated", test: (h) => (h.includes("forms.gle/jzTajVNZEgukeoYT9") && h.includes("different agents")) || "no campaign rules or registration link" },
   ]);
+  // The Set and Earn check our posts link to: it renders the checks for an agent, and a wallet's agents.
+  await page("/check?q=344123", [
+    { name: "the six checks render for an agent", test: (h) => (h.includes("x-qualify") && h.includes("Set and Earn checks")) || "no check panel" },
+  ]);
   await page("/graveyard", [
     { name: "failures are listed", test: (h) => h.includes("x-grave__who") || "no rows" },
     { name: "our own mistake is labelled", test: (h) => h.includes("Our mistake, not theirs") || "no row labelled as ours" },

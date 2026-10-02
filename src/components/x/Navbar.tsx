@@ -21,6 +21,7 @@ const PRIMARY = [
 ] as const;
 
 const MORE = [
+  { href: "/check", label: "Set and Earn check", note: "Does your agent qualify? Six checks, read from the chain" },
   { href: "/help", label: "Help", note: "How hiring works, and who to ask" },
   { href: "/leash", label: "Leash an agent", note: "Let an agent act on your wallet, within your limits" },
   { href: "/alerts", label: "Liquidation alerts", note: "Free Telegram alerts for your Venus loan" },

@@ -196,9 +196,14 @@ export default async function Home() {
             <p className="x-home__quest-t">The Set and Earn quest</p>
             <p className="x-home__quest-d">Live to 5 November: hire three different agents across at least two marketplaces, and build one of your own.</p>
           </div>
-          <Link href="/quest" className="x-btn">
-            Start the quest <ArrowRight size={16} aria-hidden="true" />
-          </Link>
+          <div className="x-home__quest-act">
+            <Link href="/check" className="x-btn x-btn--ghost">
+              Check your agent
+            </Link>
+            <Link href="/quest" className="x-btn">
+              Start the quest <ArrowRight size={16} aria-hidden="true" />
+            </Link>
+          </div>
         </div>
       </section>
 

@@ -140,14 +140,15 @@ function archive(): PublicClient | null {
 }
 
 /*
-  thirdweb's public endpoint serves eight requests at once and refuses the
-  rest (measured 1 Oct: 16 at once, 8 answered). Every archive read goes
-  through one gate of six, and a refused read is asked once more.
+  thirdweb's public endpoint, without a key, serves eight requests at once
+  and refuses the rest (1 Oct: 16 at once, 8 answered); with our key, 32 at
+  once all answered (2 Oct). Every archive read in an instance goes through
+  one gate of six, and a refused read is asked again with backoff.
 */
 let inFlight = 0;
 const waiting: (() => void)[] = [];
 async function gated<T>(fn: () => Promise<T>): Promise<T> {
-  if (inFlight >= 4) await new Promise<void>((ok) => waiting.push(ok));
+  if (inFlight >= 6) await new Promise<void>((ok) => waiting.push(ok));
   inFlight++;
   try {
     // A refused read is asked again after half a second, one, then two: a burst limit passes, a real failure does not.

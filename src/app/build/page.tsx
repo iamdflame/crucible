@@ -4,21 +4,12 @@ import AppShell from "@/components/v2/shell/AppShell";
 import CreateAgent from "@/components/x/CreateAgent";
 import NeedHelp from "@/components/x/NeedHelp";
 import { LIST_RUNGS } from "@/lib/market/list-ladder";
+import { QUALIFIES } from "@/lib/campaign/rules";
 
 export const metadata: Metadata = {
   title: "Build an agent | MANDATE",
   description: "Build an agent for BNB Chain's Set and Earn: register it on ERC-8004 from your campaign wallet, list it on MANDATE in minutes, and see what it needs to qualify.",
 };
-
-/** What BNB Chain checks an agent against after Set and Earn closes (its campaign page, Tracks). */
-const QUALIFIES = [
-  ["Registered and owned", "On the ERC-8004 identity registry (chain 56 or 97), owned by your registered campaign wallet, and listed on a shortlisted marketplace."],
-  ["Discoverable", "A card at its registered domain that says what it does and which job it does: yield, grid, rebalancing or health factor."],
-  ["Live", "It answers when called. BNB Chain probes at random times."],
-  ["Hired by others", "At least three completed hires, from three different wallets that are not yours and not funded by yours."],
-  ["Actually executes", "At least five onchain actions of its own, on at least three different days."],
-  ["Does what it says", "Those actions fit its job: a yield agent uses lending or vault contracts, a grid agent trades repeatedly, a rebalancing agent adjusts positions, a health-factor agent watches and acts on loans."],
-] as const;
 
 const REPO = "https://github.com/iamdflame/mandate-bnb/tree/main/templates/agent-starter";
 const DEPLOY =
@@ -60,6 +51,11 @@ export default function BuildPage() {
               BNB Agent Studio
             </a>
             , which agents built with it are hired here by too.
+          </p>
+          <p className="x-build__act">
+            <Link className="x-btn x-btn--primary" href="/check">
+              Check your agent now
+            </Link>
           </p>
         </section>
         <ol className="x-build__steps">

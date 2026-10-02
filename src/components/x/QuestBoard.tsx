@@ -185,9 +185,14 @@ export default function QuestBoard({ cards, campaign }: { cards: QuestCard[]; ca
             ) : p?.best ? (
               <p className="x-quest__agent">#{p.best.agentId} is registered, but its card does not parse yet, so it has no name here.</p>
             ) : null}
-            <Link className="x-btn x-btn--sm" href={p?.best ? `/list?id=${p.best.agentId}` : "/build"}>
-              {p?.best ? "See what it still needs" : "Build and list one"}
-            </Link>
+            <span className="x-quest__acts">
+              <Link className="x-btn x-btn--sm x-btn--primary" href={p?.best ? `/check?q=${p.best.agentId}` : address ? `/check?q=${address}` : "/check"}>
+                {p?.best ? "Check it against the six" : "Check your agent"}
+              </Link>
+              <Link className="x-btn x-btn--sm" href="/build">
+                Build and list one
+              </Link>
+            </span>
           </div>
         </li>
       </ol>

@@ -7123,3 +7123,44 @@ a.x-house__name:hover {
   font-size: var(--ts-sm);
   color: var(--c-text-2);
 }
+
+/* /check: the agents a wallet owns, and whose check is shown. */
+.x-check__owned {
+  list-style: none;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.x-check__agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line-faint);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+.x-check__agent:hover {
+  border-color: var(--c-accent-line);
+}
+.x-check__who {
+  margin-bottom: var(--s-3);
+}
+@media (max-width: 560px) {
+  .x-check__agent {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.x-home__quest-act {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.x-quest__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
