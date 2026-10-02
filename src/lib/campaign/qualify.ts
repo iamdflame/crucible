@@ -148,7 +148,7 @@ function archive(): PublicClient | null {
 let inFlight = 0;
 const waiting: (() => void)[] = [];
 async function gated<T>(fn: () => Promise<T>): Promise<T> {
-  if (inFlight >= 6) await new Promise<void>((ok) => waiting.push(ok));
+  if (inFlight >= 8) await new Promise<void>((ok) => waiting.push(ok));
   inFlight++;
   try {
     // A refused read is asked again after half a second, one, then two: a burst limit passes, a real failure does not.
@@ -224,12 +224,12 @@ async function activity(c: PublicClient, wallet: Address, since: number): Promis
 
 /** The transaction a wallet sent with a given nonce, found by searching its day for the block where the nonce moved past it. */
 async function findTx(c: PublicClient, wallet: Address, nonce: number, from: bigint, to: bigint): Promise<{ hash: Hash; to: string | null; input: string; at: number } | null> {
-  // Three points a round, asked at once: a day of blocks narrows to one in about nine rounds, at about 27 reads, gentle on a public archive.
+  // Seven points a round, asked at once: a day of blocks narrows to one in about six rounds. With our thirdweb key the archive answers 32 reads at once (2 Oct); three points a round took over 18 s for five transactions.
   let lo = from;
   let hi = to;
   while (hi - lo > 1n) {
-    const step = (hi - lo) / 4n || 1n;
-    const points = Array.from({ length: 3 }, (_, i) => lo + step * BigInt(i + 1)).filter((b) => b > lo && b < hi);
+    const step = (hi - lo) / 8n || 1n;
+    const points = Array.from({ length: 7 }, (_, i) => lo + step * BigInt(i + 1)).filter((b) => b > lo && b < hi);
     if (!points.length) break;
     const counts = await Promise.all(points.map((b) => nonceAt(c, wallet, b)));
     const first = counts.findIndex((n) => n > nonce);
@@ -248,10 +248,12 @@ async function findTx(c: PublicClient, wallet: Address, nonce: number, from: big
 
 async function hirersOf(tokenId: string, wallets: string[], owner: string | null): Promise<Qualification["hirers"]> {
   const mine = new Set([...wallets, owner ?? ""].map((w) => w.toLowerCase()));
+  // MANDATE's own agents: every declared MANDATE wallet is theirs too, so none of them counts as an outside hirer.
+  const ours = isTeam(owner);
   const found = new Map<string, string>();
   const add = (w: string | null | undefined, via: string) => {
     const k = (w ?? "").toLowerCase();
-    if (k && !mine.has(k) && !found.has(k)) found.set(k, via);
+    if (k && !mine.has(k) && !(ours && isTeam(k)) && !found.has(k)) found.set(k, via);
   };
   for (const c of await listPaidCalls().catch(() => [])) if (c.tokenId === tokenId && c.paid && c.delivered) add(c.payer, "a paid call on MANDATE");
   if (pg) {
@@ -299,7 +301,15 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
   const onChainWallet = c ? await marketClient.readContract({ address: IDENTITY_REGISTRY as Address, abi: REGISTRY, functionName: "getAgentWallet", args: [BigInt(tokenId)] }).catch(() => null) : null;
   const owner = entry?.owner ?? agent?.owner ?? null;
   const category = (agent?.category ?? listing?.category ?? null) as Category | null;
-  const wallets = [...new Set([owner, onChainWallet, listing?.quote?.payTo].filter((w): w is string => Boolean(w && /^0x[0-9a-fA-F]{40}$/.test(w))).map((w) => w.toLowerCase()))];
+  /*
+    Its own wallets: the owner and the registered agentWallet, and the address
+    it is paid at only when no other listed agent shares it. A payment address
+    several agents use belongs to whoever hosts them (ours, a platform's), and
+    that wallet's transactions are not this agent's work.
+  */
+  const payTo = listing?.quote?.payTo?.toLowerCase() ?? null;
+  const sharedPayTo = payTo ? listings().filter((l) => l.quote?.payTo?.toLowerCase() === payTo).length > 1 : false;
+  const wallets = [...new Set([owner, onChainWallet, sharedPayTo ? null : payTo].filter((w): w is string => Boolean(w && /^0x[0-9a-fA-F]{40}$/.test(w))).map((w) => w.toLowerCase()))];
 
   // 1. Registered and owned.
   const registeredAt = agent?.registeredBlock ? await marketClient.getBlock({ blockNumber: BigInt(agent.registeredBlock) }).then((b) => Number(b.timestamp), () => null) : null;
@@ -371,7 +381,18 @@ async function compute(tokenId: string, onchain: boolean): Promise<Qualification
         .flatMap((a) => a.windows.flatMap((w) => Array.from({ length: w.nonceTo - w.nonceFrom }, (_, i) => ({ wallet: a.wallet as Address, nonce: w.nonceFrom + i, w }))))
         .sort((x, y) => Number(y.w.to - x.w.to) || y.nonce - x.nonce)
         .slice(0, SAMPLE);
-      const found = (await withTimeout(pool(wanted, 2, (x) => findTx(c, x.wallet, x.nonce, x.w.from, x.w.to).catch(() => null)), 18_000)) ?? [];
+      const looked = Date.now();
+      const found =
+        (await withTimeout(
+          pool(wanted, 2, (x) =>
+            findTx(c, x.wallet, x.nonce, x.w.from, x.w.to).catch((e: Error) => {
+              console.warn(`qualify #${tokenId}: finding nonce ${x.nonce} of ${x.wallet} failed: ${e.message.split("\n")[0]!.slice(0, 160)}`);
+              return null;
+            }),
+          ),
+          24_000,
+        )) ?? [];
+      if (!found.length && wanted.length) console.warn(`qualify #${tokenId}: looking up ${wanted.length} transactions took over 24 s (${Date.now() - looked} ms)`);
       found.forEach((t, i) => {
         if (!t) return;
         const kind = kindOf(t.to, t.input);
