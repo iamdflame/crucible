@@ -50,12 +50,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
     reads each stay under that. A check that finds every slot taken is picked
     up by the page's next poll, which asks again.
   */
-  after(async () => {
-    for (const slot of [1, 2, 3, 4]) {
-      const ran = await withLease(`qualify:archive:${slot}`, 75, () => qualify(tokenId, { fresh: true })).catch(() => null);
-      if (ran !== null) return;
-    }
-  });
+  // And never two of the same agent: the page asks again every few seconds while it waits, and each ask used to start another full check, which slowed them all past their time.
+  after(() =>
+    withLease(`qualify:token:${tokenId}`, 75, async () => {
+      for (const slot of [1, 2, 3, 4]) {
+        const ran = await withLease(`qualify:archive:${slot}`, 75, () => qualify(tokenId, { fresh: true })).catch(() => null);
+        if (ran !== null) return;
+      }
+    }).catch(() => undefined),
+  );
   const quick = await quickQualification(tokenId);
   return ok(quick, { chainId: CHAIN_ID, at: quick.at }, g.headers);
 }
