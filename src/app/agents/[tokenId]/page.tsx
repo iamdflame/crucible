@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowUpRight, Check, ChevronRight, Gift, HelpCircle, Zap } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Gift, HelpCircle, ShieldCheck, Zap } from "lucide-react";
 import AppShell from "@/components/v2/shell/AppShell";
 import AgentArtwork from "@/components/x/AgentArtwork";
+import AgentSeal from "@/components/x/AgentSeal";
+import { took as inWords } from "@/components/x/AgentTile";
 import Status from "@/components/x/Status";
 import Price, { priceParts } from "@/components/x/Price";
 import Proof, { ProofGlyph } from "@/components/x/Proof";
@@ -23,7 +25,7 @@ import { jobsOfAgent, type EscrowJob } from "@/lib/escrow/jobs";
 import { latestConformance, type Latest } from "@/lib/conformance/run";
 
 const CONF_WORD: Record<string, string> = { pass: "Passed", fail: "Failed", "not-comparable": "Not comparable", unreadable: "Could not be checked", untested: "Not tested yet" };
-import { hirePath } from "@/lib/market/hire-law";
+import { hirePath, primaryRail } from "@/lib/market/hire-law";
 import { tryFreeKind } from "@/lib/market/catalogue";
 import { hireCounts } from "@/lib/market/hires";
 import { SPONSORED } from "@/lib/market/sponsored-targets";
@@ -163,9 +165,43 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const escrowOn = verdict.rails.find((r) => r.kind === "escrow");
   const escrowRail = Boolean(escrowOn);
   const escrowPrice = escrowOn?.kind === "escrow" ? escrowOn.price : null;
-  const useLabel = (perCall || escrowRail) && pp.value ? `Hire for ${pp.value}` : "Hire this agent";
+  // The price Hire charges is the leading rail's: an escrowed job's $U budget when it takes one.
+  const lead = primaryRail(verdict);
+  const leadPrice = priceParts(l, lead);
+  const useLabel = (perCall || escrowRail) && leadPrice.value ? `Hire for ${leadPrice.value}` : "Hire this agent";
   const token = l.quote ? assetSymbol(l.quote.asset) : null;
   const checkedAt = l.probe?.at ?? null;
+
+  /*
+    Its record of paid work through this marketplace, one figure per outcome,
+    from our own books checked against the chain: escrowed jobs bought here
+    (and the filed September hires) and paid calls. A job not yet delivered
+    is paid but not delivered; one that ran out its deadline was refunded.
+  */
+  const done = (s: string | null) => s === "SUBMITTED" || s === "COMPLETED";
+  const record = {
+    paid: siteJobs.filter((j) => j.status !== "OPEN").length + paidJobs.length + ownCalls.filter((c) => c.paid).length,
+    delivered: siteJobs.filter((j) => done(j.status)).length + paidJobs.filter((h) => done(h.status)).length + ownCalls.filter((c) => c.paid && c.delivered).length,
+    paidOut: siteJobs.filter((j) => j.status === "COMPLETED").length + paidJobs.filter((h) => h.status === "COMPLETED").length + ownCalls.filter((c) => c.paid && c.delivered).length,
+    refunded: siteJobs.filter((j) => j.status === "EXPIRED").length + paidJobs.filter((h) => h.status === "EXPIRED").length,
+    disputed: siteJobs.filter((j) => j.status === "REJECTED").length + paidJobs.filter((h) => h.status === "REJECTED").length,
+    failed: ownCalls.filter((c) => c.paid && !c.delivered && c.fault !== "ours").length,
+  };
+  // How fast, for the panel: its jobs here, else its answer to our call.
+  const speed = deliveredIn
+    ? `${inWords(deliveredIn.seconds)}${deliveredIn.jobs > 1 ? `, median of ${deliveredIn.jobs}` : ""}`
+    : l.probe?.answered && l.probe.latencyMs != null
+      ? `${inWords(l.probe.latencyMs / 1000)} to answer`
+      : null;
+  // What a signature allows, in one line: the buyer's question before any wallet opens.
+  const authorise =
+    lead?.kind === "escrow"
+      ? `exactly ${lead.price} into BNB Chain's escrow contract. It goes to ${l.name} only once the work is delivered.`
+      : lead?.kind === "x402"
+        ? `one payment of exactly ${lead.price}, for one answer.`
+        : "a job with the limits you set in the job form, before anything is signed.";
+  const proofsShown = trust.proofs.filter((p) => p.state !== "nodata");
+  const proofsUnread = trust.proofs.filter((p) => p.state === "nodata");
 
   return (
     <AppShell>
@@ -201,11 +237,14 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                 </span>
               ) : null}
             </div>
-            <h1 className="x-ad-name">{l.name}</h1>
+            <div className="x-ad-title">
+              <AgentSeal className="x-ad-seal" tokenId={l.tokenId} name={l.name} category={l.category} size={64} />
+              <h1 className="x-ad-name">{l.name}</h1>
+            </div>
             <p className="x-ad-what">{l.what ?? "It published no description of what it does."}</p>
 
             <div className="x-ad-buy">
-              <Price l={l} size="lg" rail={rail} />
+              <Price l={l} size="lg" rail={rail} on={lead} />
               <p className="x-ad-live">
                 {l.probe?.answered && l.probe.latencyMs != null ? (
                   <span className="x-agent__ms x-mono">
@@ -277,6 +316,41 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
 
       <div className="x-wrap x-ad-body">
         <div className="x-ad-main">
+          {/* ---------------------------------------------------- track record */}
+          <section className="x-ad-sec" aria-labelledby="h-record">
+            <div className="x-ad-sec__head">
+              <h2 id="h-record">Track record</h2>
+              <span className="x-ad-src">Paid work through MANDATE, read from the chain</span>
+            </div>
+            <dl className="x-record">
+              {(
+                [
+                  ["Paid", record.paid],
+                  ["Delivered", record.delivered],
+                  ["Paid out", record.paidOut],
+                  ["Refunded", record.refunded],
+                  ["Disputed", record.disputed],
+                ] as const
+              ).map(([k, v]) => (
+                <div key={k}>
+                  <dt>{k}</dt>
+                  <dd className="x-mono">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            {record.failed ? (
+              <p className="x-ad-src x-ad-src--warn">
+                It took payment and answered with an error {record.failed === 1 ? "once" : `${record.failed} times`}. Each one is under Activity below.
+              </p>
+            ) : null}
+            {hires ? (
+              <p className="x-ad-src">
+                Plus {hires === 1 ? "one job with capital" : `${hires} jobs with capital`} held on our market, which its settled work below counts too.
+              </p>
+            ) : null}
+            {!record.paid && !hires ? <p className="x-ad-src">No paid work through MANDATE yet. Every hire made here is recorded on chain and counted on this page.</p> : null}
+          </section>
+
           {/* -------------------------------------------------- what it can do */}
           <section className="x-ad-sec" aria-labelledby="h-can">
             <h2 id="h-can">What it can do</h2>
@@ -342,7 +416,7 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
           {l.category ? (
             <section className="x-ad-sec" aria-labelledby="h-conf" id="checks">
               <div className="x-ad-sec__head">
-                <h2 id="h-conf">MANDATE checks</h2>
+                <h2 id="h-conf">What you get, checked</h2>
                 {conf ? <span className={`x-conf x-conf--${conf.verdict}`}>{CONF_WORD[conf.verdict] ?? conf.verdict}</span> : null}
               </div>
               {conf && conf.checks.length ? (
@@ -351,8 +425,8 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                     <thead>
                       <tr>
                         <th>Field</th>
-                        <th>Our reading of the chain</th>
                         <th>Its answer</th>
+                        <th>Our reading of the chain</th>
                         <th />
                       </tr>
                     </thead>
@@ -360,9 +434,9 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                       {conf.checks.map((c) => (
                         <tr key={c.field}>
                           <td>{c.field}</td>
+                          <td className="x-mono x-conf__theirs">{c.theirs}</td>
                           <td className="x-mono">{c.ours}</td>
-                          <td className="x-mono">{c.theirs}</td>
-                          <td>{c.pass ? "matches" : "does not match"}</td>
+                          <td className={c.pass ? "x-conf__ok" : "x-conf__no"}>{c.pass ? "Matches" : "Differs"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -373,7 +447,7 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                 {conf
                   ? `${conf.note ? `${conf.note}. ` : ""}${conf.source ? `Answer from ${conf.source === "our agent" ? "our own agent" : conf.source === "free call" ? "its free call" : conf.source === "test hire" ? "a job our paid check bought" : "our test purchase"}, ` : ""}checked ${new Date(conf.at).toUTCString().slice(5, 22)} UTC${conf.block ? ` against block ${conf.block.toLocaleString("en-GB")}` : ""}. `
                   : "Not checked yet. "}
-                We ask every agent in a job the same public question and compare its answer with our own reading of BNB Smart Chain, by code.{" "}
+                What it answers, field by field: we ask every agent in a job the same public question and compare its answer with our own reading of BNB Smart Chain, by code.{" "}
                 <Link className="x-link" href="/standard">
                   The standard
                 </Link>
@@ -382,7 +456,7 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
           ) : null}
 
           {/* ------------------------------------------------------------ trust */}
-          <section className="x-ad-sec" aria-labelledby="h-trust">
+          <section className="x-ad-sec" aria-labelledby="h-trust" id="verification">
             <div className="x-ad-sec__head">
               <h2 id="h-trust">Trust</h2>
               <p className="x-ad-counts">
@@ -395,16 +469,29 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
               </p>
             </div>
             <div className="x-proofs">
-              {trust.proofs.map((p) => (
+              {proofsShown.map((p) => (
                 <Proof key={p.key} p={p} />
               ))}
             </div>
-            <p className="x-ad-src">
-              {trust.proofs.length} checks against BNB Smart Chain and the agent itself. Open any row for the evidence.{" "}
-              <a className="x-link" href="#verification">
-                See evidence
-              </a>
-            </p>
+            {proofsUnread.length ? (
+              <details className="x-proofs-more">
+                <summary>
+                  {proofsUnread.length} not checked yet: {proofsUnread.map((p) => p.label.toLowerCase()).join(", ")}
+                </summary>
+                <div className="x-proofs">
+                  {proofsUnread.map((p) => (
+                    <Proof key={p.key} p={p} />
+                  ))}
+                </div>
+              </details>
+            ) : null}
+            <p className="x-ad-src">{trust.proofs.length} checks against BNB Smart Chain and the agent itself. Open any row for the evidence.</p>
+            <details className="x-rerun">
+              <summary>Run the checks again, live</summary>
+              <div className="x-rerun__body">
+                <TrustPanel chainId={CHAIN_ID} tokenId={l.tokenId} initial={stored} blockNumber={snapshot.blockNumber} />
+              </div>
+            </details>
             {grave ? (
               <p className="x-ad-grave">
                 {grave.kind === "took"
@@ -419,39 +506,6 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                 .
               </p>
             ) : null}
-          </section>
-
-          {/* ------------------------------------------------------ verification */}
-          <section className="x-ad-sec" aria-labelledby="h-verify" id="verification">
-            <h2 id="h-verify">Verification timeline</h2>
-            <ol className="x-vt">
-              {trust.timeline.map((p) => (
-                <li key={p.key} className={`x-vt__step x-vt__step--${p.state}`}>
-                  <span className="x-vt__mark">
-                    <ProofGlyph state={p.state} size={14} />
-                  </span>
-                  <div className="x-vt__body">
-                    <p className="x-vt__t">
-                      {p.label}
-                      <span className={`x-proof__state x-proof__state--${p.state}`}>{STATE_WORD[p.state]}</span>
-                    </p>
-                    <p className="x-vt__h">{p.headline}</p>
-                    {p.meaning ? <p className="x-vt__m">{p.meaning}</p> : null}
-                    {p.at ? (
-                      <p className="x-vt__at">
-                        <Ago iso={p.at} />
-                      </p>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ol>
-            <details className="x-rerun">
-              <summary>Run the checks again, live</summary>
-              <div className="x-rerun__body">
-                <TrustPanel chainId={CHAIN_ID} tokenId={l.tokenId} initial={stored} blockNumber={snapshot.blockNumber} />
-              </div>
-            </details>
           </section>
 
           {/* ------------------------------------------------------ performance */}
@@ -649,54 +703,103 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
         </div>
 
         {/* ------------------------------------------------------- action panel */}
-        <aside className="x-ad-side" aria-label="What happens when you hire">
+        <aside className="x-ad-side" aria-label="Hire this agent">
           <div className="x-ad-panel" id="use">
-            <p className="x-ad-panel__t">What happens when you hire</p>
-            {verdict.ok && escrowRail ? (
+            <div className="x-ad-panel__who">
+              <AgentSeal tokenId={l.tokenId} name={l.name} category={l.category} size={40} />
+              <div>
+                <p className="x-ad-panel__name">{l.name}</p>
+                <p className="x-ad-panel__sub">{cat ?? "Agent"} · BNB Smart Chain</p>
+              </div>
+            </div>
+            {verdict.ok ? (
               <>
-                <ol className="x-ad-how">
-                  <li>
-                    <strong>You fund an escrowed job</strong> for exactly {escrowPrice}. Five transactions from your wallet, or one confirmation where your wallet
-                    batches them; the $U sits in the ERC-8183 contract, not with {l.name} or with us.
-                  </li>
-                  <li>
-                    <strong>{l.name} delivers on chain</strong>
-                    {deliveredIn
-                      ? `, ${deliveredIn.jobs === 1 ? "in" : "typically in"} ${deliveredIn.seconds < 120 ? `${deliveredIn.seconds} s` : `${Math.round(deliveredIn.seconds / 60)} min`} ${deliveredIn.jobs === 1 ? "on its one job here" : `across its ${deliveredIn.jobs} jobs here`}`
-                      : ", usually within minutes"}
-                    . If nothing arrives before the deadline, you take the money back.
-                  </li>
-                  <li>
-                    <strong>It is paid seven days after it delivers</strong> unless you dispute, and you can rate it on chain.
-                  </li>
-                </ol>
-                {perCall ? <p className="x-ad-note">Or pay per call instead: one signature for {pp.value ?? "the price"}, answered at once.</p> : null}
-                {slug ? (
-                  <p className="x-ad-note">
-                    From your own agent: BNB&apos;s agent SDK hires it at{" "}
-                    <a className="x-link x-mono" href={`/a2a/${slug}/.well-known/agent-card.json`}>
-                      /a2a/{slug}
-                    </a>{" "}
-                    with <span className="x-mono">negotiate-erc8183-job</span>, a quote it signs with its registered wallet.
-                  </p>
+                <div className="x-ad-panel__price">
+                  <Price l={l} size="lg" rail={rail} on={lead} />
+                  {checkedAt ? (
+                    <span className="x-ad-panel__age">
+                      <Ago iso={checkedAt} prefix="price read" />
+                    </span>
+                  ) : null}
+                </div>
+                <dl className="x-ad-facts">
+                  <div>
+                    <dt>Delivers in</dt>
+                    <dd>{speed ?? "No job here yet"}</dd>
+                  </div>
+                  <div>
+                    <dt>Paid jobs delivered</dt>
+                    <dd>{record.delivered}</dd>
+                  </div>
+                  <div>
+                    <dt>MANDATE check</dt>
+                    <dd>{conf ? (CONF_WORD[conf.verdict] ?? conf.verdict) : "Not tested yet"}</dd>
+                  </div>
+                </dl>
+                <a href="#call" className="x-btn x-btn--primary x-btn--block">
+                  {useLabel}
+                </a>
+                {sponsor || freeAnswer ? (
+                  <a href={sponsor ? "#sponsored" : "#try"} className="x-btn x-btn--block">
+                    <Gift size={16} aria-hidden="true" /> Try it free
+                  </a>
                 ) : null}
+                <p className="x-ad-authorise">
+                  <ShieldCheck size={15} aria-hidden="true" />
+                  <span>
+                    <strong>What you authorise:</strong> {authorise} Nothing else.
+                  </span>
+                </p>
+                <details className="x-ad-howto">
+                  <summary>How it works</summary>
+                  {escrowRail ? (
+                    <>
+                      <ol className="x-ad-how">
+                      <li>
+                        <strong>You fund an escrowed job</strong> for exactly {escrowPrice}. Five transactions from your wallet, or one confirmation where your wallet
+                        batches them; the $U sits in the ERC-8183 contract, not with {l.name} or with us.
+                      </li>
+                      <li>
+                        <strong>{l.name} delivers on chain</strong>
+                        {deliveredIn
+                          ? `, ${deliveredIn.jobs === 1 ? "in" : "typically in"} ${deliveredIn.seconds < 120 ? `${deliveredIn.seconds} s` : `${Math.round(deliveredIn.seconds / 60)} min`} ${deliveredIn.jobs === 1 ? "on its one job here" : `across its ${deliveredIn.jobs} jobs here`}`
+                          : ", usually within minutes"}
+                        . If nothing arrives before the deadline, you take the money back.
+                      </li>
+                      <li>
+                        <strong>It is paid seven days after it delivers</strong> unless you dispute, and you can rate it on chain.
+                      </li>
+                    </ol>
+                    {perCall ? <p className="x-ad-note">Or pay per call instead: one signature for {pp.value ?? "the price"}, answered at once.</p> : null}
+                    {slug ? (
+                      <p className="x-ad-note">
+                        From your own agent: BNB&apos;s agent SDK hires it at{" "}
+                        <a className="x-link x-mono" href={`/a2a/${slug}/.well-known/agent-card.json`}>
+                          /a2a/{slug}
+                        </a>{" "}
+                        with <span className="x-mono">negotiate-erc8183-job</span>, a quote it signs with its registered wallet.
+                      </p>
+                    ) : null}
+                    </>
+                  ) : perCall ? (
+                    <ol className="x-ad-how">
+                    <li>
+                      <strong>You sign one payment</strong> for exactly {pp.value ?? "the price"}
+                      {token ? ` in ${token}` : ""}. {l.quote?.transferMethod === "permit2" ? "It needs one approval for exactly that amount first." : "No approval, and the agent pays the gas."}
+                    </li>
+                    <li>
+                      <strong>{l.name} answers</strong>
+                      {l.probe?.answered && l.probe.latencyMs != null ? ` in about ${l.probe.latencyMs < 1000 ? `${l.probe.latencyMs} ms` : `${(l.probe.latencyMs / 1000).toFixed(1)} s`}` : ""}, and the payment is read back from the chain.
+                    </li>
+                    <li>
+                      <strong>You rate it</strong> on chain if you like. The rating is yours and names this hire.
+                    </li>
+                  </ol>
+                  ) : (
+                    <p className="x-ad-note">It is hired for a job in the market; the job form sets its limits before anything is signed.</p>
+                  )}
+                </details>
               </>
-            ) : verdict.ok && perCall ? (
-              <ol className="x-ad-how">
-                <li>
-                  <strong>You sign one payment</strong> for exactly {pp.value ?? "the price"}
-                  {token ? ` in ${token}` : ""}. {l.quote?.transferMethod === "permit2" ? "It needs one approval for exactly that amount first." : "No approval, and the agent pays the gas."}
-                </li>
-                <li>
-                  <strong>{l.name} answers</strong>
-                  {l.probe?.answered && l.probe.latencyMs != null ? ` in about ${l.probe.latencyMs < 1000 ? `${l.probe.latencyMs} ms` : `${(l.probe.latencyMs / 1000).toFixed(1)} s`}` : ""}, and the payment is read back from the chain.
-                </li>
-                <li>
-                  <strong>You rate it</strong> on chain if you like. The rating is yours and names this hire.
-                </li>
-              </ol>
-            ) : verdict.ok ? (
-              <p className="x-ad-note">It is hired for a job in the market; the job form sets its limits before anything is signed.</p>
             ) : (
               <>
                 <p className="x-ad-why">{verdict.reason}</p>
@@ -705,16 +808,6 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                 </Link>
               </>
             )}
-            {verdict.ok ? (
-              <a href="#call" className="x-btn x-btn--primary x-btn--block">
-                {useLabel}
-              </a>
-            ) : null}
-            {sponsor || freeAnswer ? (
-              <a href={sponsor ? "#sponsored" : "#try"} className="x-btn x-btn--block">
-                <Gift size={16} aria-hidden="true" /> Try it free
-              </a>
-            ) : null}
             {slug === "yield-1" || slug === "guard-1" ? (
               <Link href={`/leash?agent=${slug}`} className="x-btn x-btn--block">
                 Put it on a leash on your own wallet

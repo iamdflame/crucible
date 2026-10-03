@@ -820,7 +820,7 @@ html[data-strip="off"] .x-strip {
 
 .x-agent__art {
   position: relative;
-  aspect-ratio: 400 / 190;
+  aspect-ratio: 400 / 150;
   overflow: hidden;
   background: var(--c-surface-2);
 }
@@ -903,6 +903,108 @@ html[data-strip="off"] .x-strip {
   position: absolute;
   inset: 0;
   z-index: 1;
+}
+/* Its face, its name and its standing, on one row. */
+.x-agent__id {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.x-agent__seal {
+  flex: none;
+  border-radius: 50%;
+  box-shadow: var(--shadow-1);
+}
+.x-agent__idt {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.x-agent__state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--ts-xs);
+  line-height: 1.3;
+}
+.x-agent__state span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.x-agent__state svg {
+  flex: none;
+}
+.x-agent__state--ok {
+  color: var(--c-text-2);
+}
+.x-agent__state--ok svg {
+  color: var(--c-accent);
+}
+.x-agent__state--no {
+  color: var(--c-text-3);
+}
+.x-agent__state--no svg {
+  color: var(--c-err);
+}
+.x-agent__id + .x-agent__what {
+  margin-top: 0 !important;
+}
+/* The three figures a buyer compares: price, how fast, how much paid work. */
+.x-agent__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--c-line-faint);
+  border-bottom: 1px solid var(--c-line-faint);
+}
+.x-agent__stats > div {
+  min-width: 0;
+  padding: var(--s-3) var(--s-2) var(--s-3) 0;
+}
+.x-agent__stats > div + div {
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--c-line-faint);
+}
+.x-agent__stats dt {
+  font-size: var(--ts-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+}
+.x-agent__stats dd {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  min-width: 0;
+}
+.x-agent__fig {
+  font-family: var(--f-display);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.x-agent__fig--none {
+  font-size: var(--ts-md);
+  font-weight: 600;
+  color: var(--c-text-3);
+}
+.x-agent__cap {
+  font-size: var(--ts-2xs);
+  line-height: 1.3;
+  color: var(--c-text-3);
+}
+.x-agent__see {
+  position: relative;
+  z-index: 2;
+  margin-top: auto;
 }
 .x-agent__what {
   margin-top: calc(var(--s-2) * -1) !important;
@@ -5890,6 +5992,373 @@ a.x-house__name:hover {
   padding-left: 1.2em;
 }
 
+/* ----------------------------------------------------------- home hero */
+/* Say what you need, or start the campaign; beside it, the latest real hire on a guilloche. */
+.x-hero2 {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(40px, 6vw, 80px) 0 clamp(28px, 4vw, 48px);
+  background:
+    radial-gradient(55% 75% at 85% 20%, var(--c-accent-glow), transparent 70%),
+    linear-gradient(var(--c-line-faint) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, var(--c-line-faint) 1px, transparent 1px) 0 0 / 56px 56px,
+    var(--c-bg);
+}
+.x-hero2__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr);
+  gap: var(--s-8);
+  align-items: center;
+}
+.x-hero2__copy {
+  min-width: 0;
+}
+.x-hero2__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  margin-bottom: var(--s-5);
+  padding: 0 var(--s-4);
+  border: 1px solid var(--c-accent-line);
+  border-radius: var(--r-pill);
+  background: var(--c-accent-soft);
+  color: var(--c-text);
+  font-size: var(--ts-sm);
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color var(--d-fast) var(--e-out);
+}
+.x-hero2__pill:hover {
+  border-color: var(--c-accent);
+}
+.x-hero2__pill svg {
+  color: var(--c-accent);
+}
+.x-hero2__ask {
+  margin-top: var(--s-6);
+  max-width: 600px;
+}
+.x-hero2__asks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.x-hero2 .x-home__cta {
+  margin-top: var(--s-6);
+  gap: var(--s-3);
+}
+.x-hero2__note {
+  margin-top: var(--s-3);
+  font-size: var(--ts-xs);
+  color: var(--c-text-3);
+}
+.x-hero2__art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 460px;
+}
+.x-hero2__rosette {
+  position: absolute;
+  width: min(560px, 120%);
+  height: auto;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.x-guilloche__spin {
+  transform-origin: 300px 300px;
+  animation: x-spin 240s linear infinite;
+}
+.x-guilloche__spin--back {
+  animation-direction: reverse;
+  animation-duration: 320s;
+}
+/* The latest hire, as a certificate. */
+.x-proofcard {
+  position: relative;
+  width: min(420px, 100%);
+  display: grid;
+  gap: var(--s-4);
+  margin: 0;
+  padding: var(--s-6);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--c-surface) 92%, transparent);
+  box-shadow: var(--shadow-3);
+  backdrop-filter: blur(8px);
+}
+.x-proofcard__k {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--ts-2xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-2);
+}
+.x-proofcard__who {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: center;
+}
+.x-proofcard__agent {
+  display: block;
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: var(--ts-lg);
+  line-height: 1.3;
+  color: var(--c-text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.x-proofcard__agent:hover {
+  color: var(--c-accent-hi);
+}
+.x-proofcard__job {
+  margin: 2px 0 0;
+  font-size: var(--ts-xs);
+  color: var(--c-text-3);
+}
+.x-proofcard__price {
+  margin: 0;
+  font-size: var(--ts-md);
+  font-weight: 600;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+.x-proofcard__steps {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-4) 0 0;
+  border-top: 1px solid var(--c-line-faint);
+  list-style: none;
+  font-size: var(--ts-sm);
+}
+.x-proofcard__steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: center;
+  color: var(--c-text-2);
+}
+.x-proofcard__steps svg {
+  color: var(--c-accent);
+}
+.x-proofcard__note {
+  font-size: var(--ts-xs);
+  line-height: 1.5;
+  color: var(--c-text-3);
+}
+/* The figures, read now. */
+.x-measured {
+  padding-top: var(--s-6);
+}
+.x-measured__row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: var(--s-3) 0 0;
+  border-top: 1px solid var(--c-line);
+  border-bottom: 1px solid var(--c-line);
+}
+.x-measured__row > div {
+  padding: var(--s-5) var(--s-4) var(--s-5) 0;
+}
+.x-measured__row > div + div {
+  padding-left: var(--s-5);
+  border-left: 1px solid var(--c-line-faint);
+}
+.x-measured__row dt {
+  font-size: var(--ts-sm);
+  color: var(--c-text-2);
+}
+.x-measured__fig {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0;
+  font-family: var(--f-display);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--c-text);
+}
+.x-measured__fig--lead {
+  color: var(--c-accent);
+}
+/* How a hire is made: five steps, the latest hire's transaction under each it proves. */
+.x-how {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-4);
+  margin: var(--s-5) 0 var(--s-4);
+  padding: 0;
+  list-style: none;
+}
+.x-how__step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  border: 1px solid var(--c-line-faint);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+.x-how__k {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--ts-2xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-accent-hi);
+}
+.x-how__n {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--c-accent-soft);
+  font-family: var(--f-mono);
+  letter-spacing: 0;
+}
+.x-how__t {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 600;
+  color: var(--c-text);
+}
+.x-how__d {
+  margin: 0;
+  font-size: var(--ts-sm);
+  line-height: 1.5;
+  color: var(--c-text-2);
+}
+.x-how__tx {
+  margin-top: auto;
+  padding-top: var(--s-2);
+  font-size: var(--ts-xs);
+}
+/* The four jobs, each with its own picture. */
+.x-jobs2 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-4);
+  margin: var(--s-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.x-jobs2__tile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--c-line-faint);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform var(--d-card) var(--e-out),
+    border-color var(--d-card) var(--e-out);
+}
+.x-jobs2__tile:hover {
+  transform: translateY(-3px);
+  border-color: var(--c-line-strong);
+}
+.x-jobs2__art {
+  position: relative;
+  display: block;
+  aspect-ratio: 400 / 170;
+  overflow: hidden;
+}
+.x-jobs2__art .x-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.x-jobs2__body {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-4);
+}
+.x-jobs2__t {
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: var(--ts-lg);
+  color: var(--c-text);
+}
+.x-jobs2__d {
+  font-size: var(--ts-sm);
+  color: var(--c-text-2);
+}
+.x-jobs2__f {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  font-size: var(--ts-xs);
+  color: var(--c-text-3);
+}
+@media (max-width: 1100px) {
+  .x-how {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1023px) {
+  .x-hero2__grid {
+    grid-template-columns: 1fr;
+  }
+  .x-hero2__art {
+    min-height: 0;
+    padding: var(--s-6) 0;
+  }
+  .x-jobs2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .x-measured__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .x-measured__row > div:nth-child(3) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .x-measured__row > div:nth-child(n + 3) {
+    border-top: 1px solid var(--c-line-faint);
+  }
+}
+@media (max-width: 640px) {
+  .x-how {
+    grid-template-columns: 1fr;
+  }
+  .x-hero2 .x-home__cta .x-btn {
+    flex: 1 1 100%;
+  }
+  .x-hero2__pill-when {
+    display: none;
+  }
+  .x-hero2__rosette {
+    width: 150%;
+  }
+}
+@media (max-width: 480px) {
+  .x-jobs2 {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ------------------------------------------------------------------ home */
 .x-home {
   position: relative;
@@ -6582,6 +7051,172 @@ a.x-house__name:hover {
   font-family: var(--f-display);
   font-weight: 600;
   font-size: var(--ts-lg);
+}
+/* The agent's seal beside its name. */
+.x-ad-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-top: var(--s-3);
+}
+.x-ad-title .x-ad-name {
+  margin-top: 0;
+}
+.x-ad-seal {
+  flex: none;
+  border-radius: 50%;
+  box-shadow: var(--shadow-2);
+}
+/* Track record: one figure per outcome of paid work. */
+.x-record {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--c-line-faint);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+.x-record > div {
+  padding: var(--s-4);
+}
+.x-record > div + div {
+  border-left: 1px solid var(--c-line-faint);
+}
+.x-record dt {
+  font-size: var(--ts-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+}
+.x-record dd {
+  margin: var(--s-1) 0 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.x-ad-src--warn {
+  color: var(--c-warn);
+}
+@media (max-width: 560px) {
+  .x-record {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .x-record > div:nth-child(4) {
+    border-left: 0;
+  }
+  .x-record > div:nth-child(n + 4) {
+    border-top: 1px solid var(--c-line-faint);
+  }
+}
+/* What you get: its answer first, our reading beside it. */
+.x-conf__theirs {
+  color: var(--c-text);
+}
+.x-conf__ok {
+  color: var(--c-accent);
+  white-space: nowrap;
+}
+.x-conf__no {
+  color: var(--c-err);
+  white-space: nowrap;
+}
+/* Rows nothing has been read for yet, folded under one line. */
+.x-proofs-more {
+  margin-top: var(--s-3);
+}
+.x-proofs-more > summary {
+  cursor: pointer;
+  font-size: var(--ts-sm);
+  color: var(--c-text-3);
+}
+.x-proofs-more > summary:hover {
+  color: var(--c-text-2);
+}
+.x-proofs-more > .x-proofs {
+  margin-top: var(--s-3);
+}
+/* The hire panel: who, what it costs, three facts, one action, one line on what a signature allows. */
+.x-ad-panel__who {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--c-line-faint);
+}
+.x-ad-panel__who svg {
+  flex: none;
+}
+.x-ad-panel__name {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 600;
+  color: var(--c-text);
+  line-height: 1.25;
+}
+.x-ad-panel__sub {
+  margin: 0;
+  font-size: var(--ts-xs);
+  color: var(--c-text-3);
+}
+.x-ad-panel__price {
+  display: grid;
+  gap: var(--s-1);
+}
+.x-ad-panel__age {
+  font-size: var(--ts-xs);
+  color: var(--c-text-3);
+}
+.x-ad-facts {
+  display: grid;
+  margin: 0;
+}
+.x-ad-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--c-line-faint);
+  font-size: var(--ts-sm);
+}
+.x-ad-facts dt {
+  color: var(--c-text-3);
+}
+.x-ad-facts dd {
+  margin: 0;
+  color: var(--c-text);
+  text-align: right;
+}
+.x-ad-authorise {
+  display: flex;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--c-accent-glow);
+  font-size: var(--ts-xs);
+  line-height: 1.5;
+  color: var(--c-text-2);
+}
+.x-ad-authorise svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--c-accent);
+}
+.x-ad-authorise strong {
+  color: var(--c-text);
+}
+.x-ad-howto > summary {
+  cursor: pointer;
+  font-size: var(--ts-sm);
+  font-weight: 500;
+  color: var(--c-text-2);
+}
+.x-ad-howto > summary:hover {
+  color: var(--c-text);
+}
+.x-ad-howto[open] > summary {
+  margin-bottom: var(--s-3);
 }
 .x-ad-how {
   display: grid;

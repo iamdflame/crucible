@@ -45,7 +45,7 @@ export default async function JobsPage() {
   await live();
   const state = await marketState().catch(() => null);
   const hc = await hireCounts();
-  const takers = applyQuery(listings(hc.byTokenId, hc.settled).filter(PRED.job), EMPTY).shown.slice(0, 8);
+  const takers = applyQuery(listings(hc.byTokenId, hc.settled, hc.delivery).filter(PRED.job), EMPTY).shown.slice(0, 8);
 
   const all = state?.mandates ?? [];
   const open = all.filter((m) => m.canonical && m.state === 0);

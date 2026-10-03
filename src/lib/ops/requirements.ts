@@ -107,13 +107,14 @@ export async function requirements(): Promise<Box[]> {
       "/agents",
     ),
   );
-  const substance = ["What it can do", "What happens when you hire", "Settled work", "Verification timeline"].filter((s) => agentPage?.html.includes(s));
+  // What it does, what a hire asks you to sign, its record of paid work, and its checks: each section's own marker.
+  const substance = ['id="h-can"', "Nothing moves until you sign", 'id="h-record"', 'id="h-trust"'].filter((s) => agentPage?.html.includes(s));
   out.push(
     box(
       "detail",
       "Agent detail pages need enough substance to make an informed hire: what it does, how it's invoked, its permissions, its track record.",
       substance.length === 4 ? "done" : "partly",
-      `An agent page carries ${substance.length} of 4 sections: what it does, how a hire works and what you sign, its settled record, and its checks.`,
+      `An agent page carries ${substance.length} of 4 sections: what it does, what a hire asks you to sign, its track record of paid work, and its checks.`,
       "/agents/344119",
     ),
   );

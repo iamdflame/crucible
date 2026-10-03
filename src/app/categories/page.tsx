@@ -33,7 +33,7 @@ export const maxDuration = 60;
 export default async function CategoriesPage() {
   await live();
   const hc = await hireCounts();
-  const all = listings(hc.byTokenId, hc.settled);
+  const all = listings(hc.byTokenId, hc.settled, hc.delivery);
   const stats = categoryStats(all);
   const census = censusAge();
 

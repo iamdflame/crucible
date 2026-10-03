@@ -23,6 +23,7 @@ import { listPaidCalls } from "@/lib/market/paid-calls";
 import { strangerHires } from "@/lib/market/stranger-hires";
 import { deliveredJobs } from "@/lib/escrow/jobs";
 import { assaySnapshot } from "@/lib/market/assays";
+import type { Delivery } from "@/lib/market/listing";
 
 /**
  * Wallets this project operates.
@@ -54,6 +55,8 @@ export interface HireCounts {
    * whose deliverable matched.
    */
   settled: Map<string, number>;
+  /** How fast each agent delivered its escrowed jobs bought here: the median, and over how many. */
+  delivery: Map<string, Delivery>;
 }
 
 /** Registry tokenId keyed by the wallet that agent signs with. */
@@ -78,10 +81,19 @@ export async function hireCounts(): Promise<HireCounts> {
   for (const h of filed) if (h.deliverable?.hashMatches) settled.set(h.tokenId, (settled.get(h.tokenId) ?? 0) + 1);
   // Escrowed jobs bought here and delivered on chain, ours and outside sellers', once each.
   const seen = new Set(filed.map((h) => h.jobId));
-  for (const j of await deliveredJobs().catch(() => [])) if (!seen.has(j.jobId)) settled.set(j.tokenId, (settled.get(j.tokenId) ?? 0) + 1);
+  const times = new Map<string, number[]>();
+  for (const j of await deliveredJobs().catch(() => [])) {
+    if (j.seconds !== null) times.set(j.tokenId, [...(times.get(j.tokenId) ?? []), j.seconds]);
+    if (!seen.has(j.jobId)) settled.set(j.tokenId, (settled.get(j.tokenId) ?? 0) + 1);
+  }
+  const delivery = new Map<string, Delivery>();
+  for (const [tokenId, t] of times) {
+    const sorted = [...t].sort((a, b) => a - b);
+    delivery.set(tokenId, { seconds: sorted[Math.floor(sorted.length / 2)]!, jobs: sorted.length });
+  }
 
   const book = await readBook().catch(() => null);
-  if (!book) return { byTokenId, thirdParty, operated, settled };
+  if (!book) return { byTokenId, thirdParty, operated, settled, delivery };
 
   const bridge = walletToTokenId();
   for (const row of book.rows) {
@@ -96,5 +108,5 @@ export async function hireCounts(): Promise<HireCounts> {
     byTokenId.set(tokenId, (byTokenId.get(tokenId) ?? 0) + 1);
     thirdParty += 1;
   }
-  return { byTokenId, thirdParty, operated, settled };
+  return { byTokenId, thirdParty, operated, settled, delivery };
 }

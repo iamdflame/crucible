@@ -116,3 +116,33 @@ describe("prices", () => {
     expect(categoryStats(shelf).rebalancing.from).toBe(0.05);
   });
 });
+
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import AgentSeal, { initialsOf } from "@/components/x/AgentSeal";
+import { took } from "@/components/x/AgentTile";
+
+describe("an agent's seal", () => {
+  const seal = (tokenId: string, name: string) => renderToStaticMarkup(createElement(AgentSeal, { tokenId, name, category: "rebalancing" }));
+
+  it("is the same face for the same agent, and a different one for another", () => {
+    expect(seal("344119", "Mandate Range-1")).toBe(seal("344119", "Mandate Range-1"));
+    expect(seal("344119", "Mandate Range-1")).not.toBe(seal("344121", "Mandate Grid-1"));
+  });
+
+  it("strikes two letters a person would pick", () => {
+    expect(initialsOf("Mandate Range-1")).toBe("MR");
+    expect(initialsOf("Lattice")).toBe("LA");
+    expect(initialsOf("Brain on BNB: Venus Health")).toBe("BO");
+    expect(initialsOf(null)).toBe("?");
+  });
+});
+
+describe("how fast, in words", () => {
+  it("says seconds, minutes or hours", () => {
+    expect(took(0.3)).toBe("<1 s");
+    expect(took(16)).toBe("16 s");
+    expect(took(300)).toBe("5 min");
+    expect(took(7200)).toBe("2 h");
+  });
+});

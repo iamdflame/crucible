@@ -155,7 +155,7 @@ export default async function DiagnosePage({
                 </h2>
                 <p className="m-head__note">Only agents a buyer can hire right now, by the same rules as everywhere on this site.</p>
               </div>
-              {agentsFor(result.needed, listings(hires, counts?.settled)).map((g) => (
+              {agentsFor(result.needed, listings(hires, counts?.settled, counts?.delivery)).map((g) => (
                 <div className="x-diag-cat" key={g.category}>
                   <h3 className="m-h3 x-diag-cat__h">
                     <CategoryMark category={g.category} size={24} /> {CATEGORY_LABEL[g.category]}

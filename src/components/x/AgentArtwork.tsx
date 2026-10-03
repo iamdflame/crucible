@@ -28,7 +28,7 @@ import type { Category } from "@/lib/config";
 
 type Shape = "banner" | "square" | "wide";
 
-const TONE: Record<Category, { hue: string; hue2: string; bg: string }> = {
+export const TONE: Record<Category, { hue: string; hue2: string; bg: string }> = {
   rebalancing: { hue: "var(--c-cat-rebalance)", hue2: "var(--c-cat-rebalance-2)", bg: "var(--c-cat-rebalance-bg)" },
   "grid-trading": { hue: "var(--c-cat-grid)", hue2: "var(--c-cat-grid-2)", bg: "var(--c-cat-grid-bg)" },
   "yield-optimisation": { hue: "var(--c-cat-yield)", hue2: "var(--c-cat-yield-2)", bg: "var(--c-cat-yield-bg)" },
@@ -36,7 +36,7 @@ const TONE: Record<Category, { hue: string; hue2: string; bg: string }> = {
 };
 
 /** A small deterministic PRNG. Same seed, same picture, on server and client. */
-function rng(seed: string) {
+export function rng(seed: string) {
   let h = 1779033703 ^ seed.length;
   for (let i = 0; i < seed.length; i++) {
     h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);

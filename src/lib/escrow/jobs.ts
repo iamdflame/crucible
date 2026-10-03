@@ -210,11 +210,24 @@ export async function jobsOfAgent(tokenId: string): Promise<EscrowJob[]> {
 }
 
 /** Jobs funded here that the agent delivered on chain (submitted, or submitted and paid), one entry per job. */
-export async function deliveredJobs(): Promise<{ tokenId: string; jobId: string }[]> {
+/**
+ * Jobs delivered on chain, with how long each took: from our record of the
+ * funding, written moments after it, to the kernel's submission time. A job we
+ * only learned of later reads as slow, so a negative or day-long gap is null.
+ */
+export async function deliveredJobs(): Promise<{ tokenId: string; jobId: string; seconds: number | null }[]> {
   if (!pg) return [];
   await outsideColumns();
-  const rows = (await pg`select token_id, job_id from escrow_jobs where status in ('SUBMITTED', 'COMPLETED')`) as { token_id: string; job_id: string }[];
-  return rows.map((r) => ({ tokenId: r.token_id, jobId: r.job_id }));
+  const rows = (await pg`select token_id, job_id, extract(epoch from created_at)::float8 as created, submitted_at from escrow_jobs where status in ('SUBMITTED', 'COMPLETED')`) as {
+    token_id: string;
+    job_id: string;
+    created: number;
+    submitted_at: string | number | null;
+  }[];
+  return rows.map((r) => {
+    const took = r.submitted_at === null ? null : Number(r.submitted_at) - Number(r.created);
+    return { tokenId: r.token_id, jobId: r.job_id, seconds: took !== null && took >= 0 && took < 86_400 ? Math.max(1, Math.round(took)) : null };
+  });
 }
 
 export async function jobsOfClient(client: string): Promise<EscrowJob[]> {

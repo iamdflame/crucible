@@ -57,7 +57,7 @@ export default async function AgentsPage({
   await live();
   const q = parseQuery(await searchParams);
   const hc = await hireCounts();
-  const all = listings(hc.byTokenId, hc.settled);
+  const all = listings(hc.byTokenId, hc.settled, hc.delivery);
   const census = censusAge();
   const { shown, intent, intentUsed } = applyQuery(all, q);
   const page = shown.slice(0, q.n);

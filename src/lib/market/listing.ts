@@ -161,6 +161,14 @@ export interface Listing {
   copies: number;
   /** True for the one registration that stands for its product: the earliest. */
   firstOfProduct: boolean;
+  /** How fast it delivered escrowed jobs bought here (median, and over how many), when it has. */
+  deliveredIn?: Delivery | null;
+}
+
+/** A delivery time: the median seconds from funding to delivery on chain, over `jobs` jobs. */
+export interface Delivery {
+  seconds: number;
+  jobs: number;
 }
 
 interface ProbeRow {
@@ -498,10 +506,13 @@ export function settledFromRecord(): Map<string, number> {
  * over; callers that do not get zero, which is the truth today for every agent
  * on this registry.
  */
-export function listings(hires?: Map<string, number>, settled?: Map<string, number>): Listing[] {
+export function listings(hires?: Map<string, number>, settled?: Map<string, number>, delivery?: Map<string, Delivery>): Listing[] {
   return getAgentIndex()
     .agents.filter((a) => a.category)
-    .map((a) => toListing(a, hires?.get(a.tokenId) ?? 0, settled ? (settled.get(a.tokenId) ?? 0) + (hires?.get(a.tokenId) ?? 0) : undefined))
+    .map((a) => ({
+      ...toListing(a, hires?.get(a.tokenId) ?? 0, settled ? (settled.get(a.tokenId) ?? 0) + (hires?.get(a.tokenId) ?? 0) : undefined),
+      deliveredIn: delivery?.get(a.tokenId) ?? null,
+    }))
     .sort((a, b) => b.readiness - a.readiness || b.confidence - a.confidence);
 }
 
