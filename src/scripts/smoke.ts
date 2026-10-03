@@ -186,6 +186,23 @@ async function main() {
   await page("/check?q=344123", [
     { name: "the six checks render for an agent", test: (h) => (h.includes("x-qualify") && h.includes("Set and Earn checks")) || "no check panel" },
   ]);
+  // Builders rarely know their id: a name, or a link to the agent's page, finds it too.
+  await page(`/check?q=${encodeURIComponent("Mandate Guard-1")}`, [
+    { name: "an agent's name finds its check", test: (h) => h.includes("x-qualify") || h.includes("x-check__agent") || "the name found nothing" },
+  ]);
+  // The shop opens on what can be hired: every card on the first screen has a Hire button.
+  await page("/agents", [
+    {
+      name: "opens on Ready to hire, every card hireable",
+      test: (h) => {
+        if (!/x-tab x-tab--on"[^>]*><span class="x-tab__long">Ready to hire/.test(h)) return "not on the Ready to hire tab";
+        // A card's body can stream in after its frame, so each card's Hire link is looked for anywhere in the page.
+        const ids = [...h.matchAll(/class="x-agent[^"]*" data-agent="(\d+)"/g)].slice(0, 12).map((m) => m[1]!);
+        const dead = ids.filter((id) => !h.includes(`href="/agents/${id}#call"`) && !h.includes(`href="/hire/${id}"`));
+        return (ids.length > 0 && dead.length === 0) || `${dead.length} of ${ids.length} cards cannot be hired (${dead.join(", ")})`;
+      },
+    },
+  ]);
   await page("/graveyard", [
     { name: "failures are listed", test: (h) => h.includes("x-grave__who") || "no rows" },
     { name: "our own mistake is labelled", test: (h) => h.includes("Our mistake, not theirs") || "no row labelled as ours" },
