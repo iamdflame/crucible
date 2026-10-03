@@ -513,8 +513,23 @@ export async function deliver(jobId: string): Promise<string> {
     const wallet = walletFor(key);
     const account = wallet.account;
     const optParams = toHex(JSON.stringify({ deliverable_url: deliverableUrl(jobId) }));
-    const { request } = await marketClient.simulateContract({ account, address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "submit", args: [BigInt(jobId), a.hash, optParams] });
-    const hash = await wallet.writeContract(request);
+    /*
+      Delivered the moment the buyer's record arrives, which is moments after
+      their funding: the node that simulates can be a block behind and read
+      the job as unfunded (3 Oct, job 56888 waited for the five-minute sweep).
+      A submission that reverts in simulation is tried again on the next
+      blocks before it is left to the sweep.
+    */
+    let request: unknown = null;
+    for (let attempt = 0; request === null; attempt++) {
+      try {
+        request = (await marketClient.simulateContract({ account, address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "submit", args: [BigInt(jobId), a.hash, optParams] })).request;
+      } catch (e) {
+        if (attempt >= 3 || !/revert/i.test((e as Error).message)) throw e;
+        await new Promise((ok) => setTimeout(ok, 3_000));
+      }
+    }
+    const hash = await wallet.writeContract(request as never);
     const receipt = await marketClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
     if (receipt.status !== "success") {
       await pg!`update escrow_jobs set note = ${`Submit reverted: ${hash}`}, updated_at = now() where job_id = ${jobId}`;
@@ -667,12 +682,22 @@ export async function sweepEscrow(opts: { budgetMs: number }): Promise<string> {
   const started = Date.now();
   // Jobs funded to our agents on chain by buyers who never came through this site.
   const watched = await watchFunded({ budgetMs: Math.min(8_000, opts.budgetMs / 2) }).catch((e: Error) => `watch failed: ${e.message.split("\n")[0]}`);
-  // A funded job past its deadline is the buyer's to reclaim; it no longer takes a slot here.
-  const open = (await pg`
+  /*
+    A funded job past its deadline is the buyer's to reclaim; it no longer takes a slot here.
+    Deliveries go first: a buyer is waiting on a funded job, while a submitted
+    one only waits out its seven-day window. Oldest first was starving them:
+    on 3 Oct a job funded at 15:59 waited two ticks behind sixteen outside
+    sellers' jobs (each told and read again, some timing out) and twenty
+    settlements. Ours now go first, then outside sellers' newest first.
+  */
+  const funded = (await pg`
     select job_id, status from escrow_jobs
-    where status = 'SUBMITTED' or (status = 'FUNDED' and (expired_at is null or expired_at > extract(epoch from now())::bigint))
-    order by created_at asc limit 20
+    where status = 'FUNDED' and (expired_at is null or expired_at > extract(epoch from now())::bigint)
+    order by (slug <> '') desc, created_at desc limit 20
   `) as { job_id: string; status: string }[];
+  const submitted = (await pg`select job_id, status from escrow_jobs where status = 'SUBMITTED' order by created_at asc limit 20`) as { job_id: string; status: string }[];
+  // Our own deliveries, then outside sellers' newest first, then settlements.
+  const open = [...funded, ...submitted];
   if (!open.length) return `watch: ${watched}; no open jobs`;
   const windowSeconds = await marketClient.readContract({ address: ESCROW.policy, abi: POLICY_ABI, functionName: "disputeWindow" });
   const done: string[] = [];

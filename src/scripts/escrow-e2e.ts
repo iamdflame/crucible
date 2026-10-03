@@ -5,6 +5,10 @@
  *   npm run escrow-e2e -- --agent guard-1
  *   npm run escrow-e2e -- --api https://www.mandatemarkets.com
  *                                         record and deliver through the live site
+ *   npm run escrow-e2e -- --pay-bnb       buy the budget's $U with BNB first, the
+ *                                         way the drawer does for a buyer short of
+ *                                         $U (lib/escrow/pay-with-bnb), and check
+ *                                         exactly the budget arrived
  *
  * The buyer's five transactions exactly as the drawer sends them (open, bind
  * to the policy, budget, approve exactly the budget, fund), then the record
@@ -18,6 +22,8 @@ import { keccak256, parseEventLogs, stringToHex, type Hex } from "viem";
 import { marketClient, walletFor } from "@/lib/chain/market";
 import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, HOUSE_BUDGET, POLICY_ABI, ROUTER_ABI, TOKEN_ABI, VIA } from "@/lib/escrow/contracts";
 import { deliver, deliverableUrl, jobRow, providerFor, readJob, recordFunded } from "@/lib/escrow/jobs";
+import { planSwap } from "@/lib/escrow/pay-with-bnb";
+import { formatEther } from "viem";
 
 const arg = (name: string, fallback: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -39,10 +45,44 @@ async function main() {
     marketClient.readContract({ address: ESCROW.policy, abi: POLICY_ABI, functionName: "disputeWindow" }),
   ]);
   console.log(`buyer ${me}: ${Number(u) / 1e18} $U, ${Number(bnb) / 1e18} BNB; provider ${p.ref.name} ${p.owner}`);
-  if (u < budget) throw new Error("the test wallet needs at least 0.05 $U: run npm run fund-test-wallet first");
+  // Carry on with a job already opened by an earlier run that stopped part way.
+  const resume = arg("job", "");
+  if (process.argv.includes("--pay-bnb") && !resume) {
+    // The whole budget's worth, so the swap is exercised even when the wallet already holds some $U.
+    const plan = await planSwap(marketClient, me, budget);
+    console.log(`  swap: ${formatEther(plan.quote)} BNB at the pool's price, at most ${formatEther(plan.maxIn)}, for ${Number(budget) / 1e18} $U`);
+    const hash = await wallet.sendTransaction({ to: plan.call.to, data: plan.call.data, value: plan.call.value } as never);
+    const r = await marketClient.waitForTransactionReceipt({ hash });
+    console.log(`  swap BNB for $U: ${r.status} https://bscscan.com/tx/${hash}`);
+    if (r.status !== "success") throw new Error("the swap reverted");
+    const [u2, bnb2] = await Promise.all([
+      marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "balanceOf", args: [me] }),
+      marketClient.getBalance({ address: me }),
+    ]);
+    const spent = bnb - bnb2 - r.gasUsed * r.effectiveGasPrice;
+    console.log(`  received ${formatEther(u2 - u)} $U (asked ${formatEther(budget)}) for ${formatEther(spent)} BNB, plus ${formatEther(r.gasUsed * r.effectiveGasPrice)} BNB gas`);
+    if (u2 - u !== budget) throw new Error("the swap did not deliver exactly the budget");
+    if (spent > plan.maxIn) throw new Error("the swap took more BNB than its cap");
+  }
+  const held = await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "balanceOf", args: [me] });
+  if (held < budget) throw new Error("the test wallet needs at least 0.05 $U: run npm run fund-test-wallet first, or pass --pay-bnb");
 
   const send = async (label: string, request: Parameters<typeof wallet.writeContract>[0]) => {
-    const hash = await wallet.writeContract(request);
+    /*
+      The node that estimates a step can be a block behind the one that mined
+      the step before it, and then a good call reads as a revert (3 Oct: job
+      56888's registerJob, which simulated fine a moment later). A step that
+      reverts in estimation is tried again on the next block before it fails.
+    */
+    let hash: `0x${string}` | null = null;
+    for (let attempt = 0; hash === null; attempt++) {
+      try {
+        hash = await wallet.writeContract(request);
+      } catch (e) {
+        if (attempt >= 3 || !/revert/i.test((e as Error).message)) throw e;
+        await new Promise((ok) => setTimeout(ok, 4_000));
+      }
+    }
     const r = await marketClient.waitForTransactionReceipt({ hash });
     console.log(`  ${label}: ${r.status} https://bscscan.com/tx/${hash}`);
     if (r.status !== "success") throw new Error(`${label} reverted`);
@@ -51,9 +91,14 @@ async function main() {
 
   const expiredAt = BigInt(Math.floor(Date.now() / 1000)) + BigInt(disputeWindow) + BigInt(DELIVERY_SECONDS);
   const description = `${VIA}: ${p.ref.name} (ERC-8004 #${p.tokenId}) for ${me}`;
-  const created = await send("open the job", { address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "createJob", args: [p.owner, ESCROW.router, expiredAt, description, ESCROW.router] } as never);
-  const jobId = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobCreated", logs: created.logs })[0]!.args.jobId;
-  console.log(`  job #${jobId}`);
+  const jobId = resume
+    ? BigInt(resume)
+    : parseEventLogs({
+        abi: COMMERCE_ABI,
+        eventName: "JobCreated",
+        logs: (await send("open the job", { address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "createJob", args: [p.owner, ESCROW.router, expiredAt, description, ESCROW.router] } as never)).logs,
+      })[0]!.args.jobId;
+  console.log(`  job #${jobId}${resume ? " (resumed)" : ""}`);
   await send("bind it to the policy", { address: ESCROW.router, abi: ROUTER_ABI, functionName: "registerJob", args: [jobId, ESCROW.policy] } as never);
   await send("set the budget", { address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "setBudget", args: [jobId, budget, "0x"] } as never);
   const allowance = await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "allowance", args: [me, ESCROW.commerce] });

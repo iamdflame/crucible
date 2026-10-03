@@ -9,6 +9,8 @@ import OpenInWallet from "./OpenInWallet";
 import RateAgent from "./RateAgent";
 import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, outsideDescription, POLICY_ABI, ROUTER_ABI, TOKEN_ABI, VIA } from "@/lib/escrow/contracts";
 import { canBatch, NotBatchable, sendBatch } from "@/lib/escrow/batch";
+import { planSwap, SWAP_ROUTER_ABI, type SwapPlan } from "@/lib/escrow/pay-with-bnb";
+import { PROTOCOLS } from "@/lib/config";
 import { track } from "@/lib/ops/funnel-client";
 
 /**
@@ -82,6 +84,17 @@ export default function EscrowHire({
   const [fundTx, setFundTx] = useState<Hash | null>(null);
   // This wallet sends the five steps as one atomic batch: one confirmation instead of five.
   const [batch, setBatch] = useState(false);
+  /*
+    Short of $U, a buyer can pay the difference in BNB: PancakeSwap swaps
+    exactly the shortfall inside the hire (lib/escrow/pay-with-bnb), in the
+    same confirmation where the wallet batches. The plan is shown before
+    anything is signed and read again at the moment of sending.
+  */
+  const [withBnb, setWithBnb] = useState(false);
+  const [plan, setPlan] = useState<SwapPlan | null>(null);
+  const [swapTx, setSwapTx] = useState<Hash | null>(null);
+  const [swapping, setSwapping] = useState(false);
+  const swapped = useRef(false);
 
   useEffect(() => {
     marketClient
@@ -98,6 +111,17 @@ export default function EscrowHire({
     marketClient.getBalance({ address }).then(setBnb).catch(() => undefined);
     void canBatch(address).then(setBatch);
   }, [address]);
+
+  useEffect(() => {
+    if (!withBnb || !address || balance === null || balance >= budget) return;
+    let gone = false;
+    planSwap(marketClient, address, budget - balance)
+      .then((p) => !gone && setPlan(p))
+      .catch((e: Error) => !gone && setError(`${e.message.slice(0, 160)} Get $U on PancakeSwap instead, or try again.`));
+    return () => {
+      gone = true;
+    };
+  }, [withBnb, address, balance, budget]);
 
   const outside = Boolean(offer.outside);
   // After funding, the job is read back until the agent's submission shows.
@@ -182,6 +206,12 @@ export default function EscrowHire({
       }
       const cost = d.quote?.price ?? budget;
       const provider = d.quote?.provider ?? (offer.provider as Address);
+      // Paying in BNB: the shortfall is read again now, against the final price, and the pool's price with it.
+      let swap: SwapPlan | null = null;
+      if (withBnb && !swapped.current) {
+        const held = (await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "balanceOf", args: [address] })) as bigint;
+        if (held < cost) swap = await planSwap(marketClient, address, cost - held);
+      }
       // An outside seller reads its task from the description; ours is the line any indexer can match.
       const description = d.quote?.description ?? (offer.outside ? outsideDescription(offer.outside.serviceName ?? offer.name, offer.outside.service, inputs) : `${VIA}: ${offer.name} (ERC-8004 #${offer.tokenId}) for ${about}`);
       /*
@@ -197,6 +227,8 @@ export default function EscrowHire({
         const next = ((await marketClient.readContract({ address: ESCROW.commerce, abi: COMMERCE_ABI, functionName: "jobCounter" })) as bigint) + 1n;
         const allowance = (await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "allowance", args: [address, ESCROW.commerce] })) as bigint;
         const calls = [
+          // The $U the job is short of, bought with BNB first, so the funding below can spend it.
+          ...(swap ? [swap.call] : []),
           { to: ESCROW.commerce as Address, data: encodeFunctionData({ abi: COMMERCE_ABI, functionName: "createJob", args: [provider, ESCROW.router, d.expiredAt, description, ESCROW.router] }) },
           { to: ESCROW.router as Address, data: encodeFunctionData({ abi: ROUTER_ABI, functionName: "registerJob", args: [next, ESCROW.policy] }) },
           { to: ESCROW.commerce as Address, data: encodeFunctionData({ abi: COMMERCE_ABI, functionName: "setBudget", args: [next, cost, "0x"] }) },
@@ -217,6 +249,11 @@ export default function EscrowHire({
           const receipt = await marketClient.waitForTransactionReceipt({ hash });
           const fundedLog = parseEventLogs({ abi: COMMERCE_ABI, eventName: "JobFunded", logs: receipt.logs }).find((l) => l.args.client.toLowerCase() === address.toLowerCase());
           if (!fundedLog) throw new Error("The batch went through, but no funded job for this wallet is in it. Check My Desk before trying again.");
+          // The batch is atomic: a funded job in it means the swap in front of it went through too.
+          if (swap) {
+            swapped.current = true;
+            setSwapTx(hash);
+          }
           const id = fundedLog.args.jobId;
           d.id = id;
           [0, 1, 2, 3, 4].forEach((i) => d.steps.add(i));
@@ -229,6 +266,17 @@ export default function EscrowHire({
           void record();
           void poll(id);
           return;
+        }
+      }
+      // A wallet that cannot batch signs the swap on its own first; a retry never swaps twice.
+      if (swap) {
+        setSwapping(true);
+        try {
+          const h = await sendMarketTx(address, "multicall", [swap.call.deadline, swap.call.inner], swap.call.value, undefined, { address: PROTOCOLS.pancakeSmartRouter as Address, abi: SWAP_ROUTER_ABI });
+          swapped.current = true;
+          setSwapTx(h);
+        } finally {
+          setSwapping(false);
         }
       }
       if (d.id === null) {
@@ -312,8 +360,19 @@ export default function EscrowHire({
         {disputeWindow === null ? "after the dispute window" : `${days(disputeWindow)} after it delivers`} unless you dispute, and comes back to you if it does not deliver
         within {DELIVERY_SECONDS / 60} minutes.
       </p>
-      {batch && at < 5 ? <p className="x-escrow__note">Your wallet takes all five steps as one confirmation: they happen together or not at all.</p> : null}
+      {batch && at < 5 ? <p className="x-escrow__note">Your wallet takes all {withBnb ? "six" : "five"} steps as one confirmation: they happen together or not at all.</p> : null}
       <ol className="x-escrow__steps">
+        {withBnb ? (
+          <li className={swapTx ? "x-escrow__done" : swapping ? "x-escrow__now" : undefined}>
+            {swapTx ? <Check size={14} aria-hidden="true" /> : swapping ? <Loader2 size={14} className="x-spin" aria-hidden="true" /> : <span className="x-escrow__n">0</span>}
+            Swap BNB for {plan ? formatUnits(plan.need, 18) : "the"} $U on PancakeSwap
+            {swapTx ? (
+              <a className="x-link x-mono" href={`https://bscscan.com/tx/${swapTx}`} target="_blank" rel="noreferrer">
+                {swapTx.slice(0, 8)}…
+              </a>
+            ) : null}
+          </li>
+        ) : null}
         {STEPS.map((s, i) => (
           <li
             key={s}
@@ -345,22 +404,58 @@ export default function EscrowHire({
           </button>
         </>
       ) : null}
-      {at < 0 ? (
-        balance !== null && balance < budget ? (
+      {at < 0 && !swapping ? (
+        balance !== null && balance < budget && !withBnb ? (
+          <div className="x-escrow__short">
+            <p className="x-escrow__err">
+              This wallet holds {Number(Number(formatUnits(balance, 18)).toFixed(4))} $U; the job needs {short}.
+            </p>
+            <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={() => setWithBnb(true)} disabled={bnb !== null && bnb < GAS_FOR_FIVE}>
+              Pay the difference in BNB
+            </button>
+            <p className="x-escrow__note">
+              PancakeSwap swaps exactly the $U the job is short of, for at most 2% over its price, {batch ? "in the same confirmation as the job" : "as one more signature before the job"}. Unused BNB comes straight back.{" "}
+              <a className="x-link" href={`https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${ESCROW.paymentToken}`} target="_blank" rel="noreferrer">
+                Or get $U on PancakeSwap yourself
+              </a>
+            </p>
+          </div>
+        ) : bnb !== null && bnb < GAS_FOR_FIVE + (withBnb && plan ? plan.maxIn : 0n) ? (
           <p className="x-escrow__err">
-            This wallet holds {Number(Number(formatUnits(balance, 18)).toFixed(4))} $U; the job needs {short}.{" "}
-            <a className="x-link" href={`https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${ESCROW.paymentToken}`} target="_blank" rel="noreferrer">
-              Get $U on PancakeSwap
-            </a>
+            This wallet holds {fmtBnb(bnb, 5)} BNB.{" "}
+            {withBnb && plan ? `The swap takes up to ${fmtBnb(plan.maxIn, 6)} BNB, plus about 0.0001 BNB of gas` : "About 0.0001 BNB of gas covers the five steps"}; add a little BNB on BNB
+            Smart Chain first.
           </p>
-        ) : bnb !== null && bnb < GAS_FOR_FIVE ? (
-          <p className="x-escrow__err">
-            This wallet holds {fmtBnb(bnb, 5)} BNB. About 0.0001 BNB of gas covers the five steps; add a little BNB on BNB Smart Chain first.
-          </p>
+        ) : withBnb && !plan && !error ? (
+          <p className="x-escrow__note">Reading PancakeSwap&apos;s price…</p>
         ) : (
-          <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run} disabled={disputeWindow === null}>
-            {batch ? `Fund the job, ${short} $U, in one confirmation` : `Fund the job, ${short} $U`}
-          </button>
+          <>
+            {withBnb && !plan && error && failedAt === null ? <p className="x-escrow__err">{error}</p> : null}
+            {withBnb && plan ? (
+              <p className="x-escrow__note">
+                About {fmtBnb(plan.quote, 6)} BNB, at most {fmtBnb(plan.maxIn, 6)}, buys the {formatUnits(plan.need, 18)} $U this wallet is short of. Unused BNB comes straight back.{" "}
+                <button
+                  type="button"
+                  className="x-linkbtn"
+                  onClick={() => {
+                    setWithBnb(false);
+                    setPlan(null);
+                  }}
+                >
+                  Pay in $U instead
+                </button>
+              </p>
+            ) : null}
+            <button type="button" className="x-btn x-btn--primary x-btn--block" onClick={run} disabled={disputeWindow === null || (withBnb && !plan)}>
+              {withBnb
+                ? batch
+                  ? `Swap and fund the job, ${short} $U, in one confirmation`
+                  : `Swap BNB and fund the job, ${short} $U`
+                : batch
+                  ? `Fund the job, ${short} $U, in one confirmation`
+                  : `Fund the job, ${short} $U`}
+            </button>
+          </>
         )
       ) : null}
       {jobId !== null && at >= 5 ? (

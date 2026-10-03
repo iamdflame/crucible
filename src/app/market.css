@@ -6751,6 +6751,25 @@ a.x-house__name:hover {
   color: var(--c-err);
   font-size: var(--ts-sm);
 }
+/* Short of $U: the offer to pay the difference in BNB. */
+.x-escrow__short {
+  display: grid;
+  gap: var(--s-3);
+}
+.x-linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-text);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--c-line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.x-linkbtn:hover {
+  text-decoration-color: var(--c-accent);
+}
 
 /* ------------------------------------------------------------------ help */
 .x-help {

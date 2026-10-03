@@ -5,7 +5,9 @@
  * transaction: MetaMask does it by upgrading the account under EIP-7702,
  * smart wallets through their own account. The escrow's five steps (open,
  * bind, budget, approve, fund) go as one batch naming the job number it will
- * get, jobCounter() + 1. If somebody else's job takes that number first, the
+ * get, jobCounter() + 1, behind a swap of BNB for the $U the buyer is short
+ * of when they pay in BNB (lib/escrow/pay-with-bnb). If somebody else's job
+ * takes that number first, the
  * budget and fund calls are refused (the kernel answers Unauthorized to
  * anyone but a job's client, checked on chain 27 Sep) and, the batch being
  * atomic, nothing at all happens; the buyer presses again.
@@ -53,14 +55,14 @@ function statusCode(s: unknown): number {
  * transaction that carried it. A refusal, a revert or a timeout is thrown as
  * a sentence; a wallet that turns the method down is thrown as NotBatchable.
  */
-export async function sendBatch(address: Address, calls: { to: Address; data: Hex }[], onSent?: () => void): Promise<Hash> {
+export async function sendBatch(address: Address, calls: { to: Address; data: Hex; value?: bigint }[], onSent?: () => void): Promise<Hash> {
   const req = request();
   if (!req) throw new NotBatchable("no wallet");
   let id: string;
   try {
     const res = (await req({
       method: "wallet_sendCalls",
-      params: [{ version: "2.0.0", chainId: "0x38", from: address, atomicRequired: true, calls: calls.map((c) => ({ to: c.to, data: c.data, value: "0x0" })) }],
+      params: [{ version: "2.0.0", chainId: "0x38", from: address, atomicRequired: true, calls: calls.map((c) => ({ to: c.to, data: c.data, value: `0x${(c.value ?? 0n).toString(16)}` })) }],
     })) as string | { id: string };
     id = typeof res === "string" ? res : res.id;
   } catch (e) {

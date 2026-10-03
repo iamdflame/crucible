@@ -747,6 +747,20 @@ html:has(.m-app) body {
   color: var(--ink);
   text-align: right;
 }
+/* Set and Earn, as far as this site counts it, one tap from the quest. */
+.m-wallet__quest {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--r-sm);
+  background: var(--c-accent-soft);
+  color: var(--ink);
+  font-size: var(--m-small);
+  text-decoration: none;
+}
+.m-wallet__quest:hover {
+  background: var(--c-accent-glow);
+}
 
 @media (max-width: 560px) {
   .m-menu__panel,
