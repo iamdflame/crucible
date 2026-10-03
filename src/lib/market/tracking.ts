@@ -23,6 +23,7 @@ import { placeAgent, readMarketSets } from "@/lib/rung";
 import { jobsOfClient, type EscrowJob } from "@/lib/escrow/jobs";
 import { ESCROW } from "@/lib/escrow/contracts";
 import type { PaidCallRecord } from "@/lib/market/paid-calls";
+import { CAMPAIGN_ENDS } from "@/lib/campaign/rules";
 
 export type HireKind = "paid-call" | "market-job" | "escrow-job";
 
@@ -243,7 +244,7 @@ export const CAMPAIGN = {
   marketplaces: 2,
   register: "https://forms.gle/jzTajVNZEgukeoYT9",
   page: "https://www.bnbchain.org/en/hackathons/smart-money-era-set-and-earn?tab=tracks",
-  ends: "2026-11-05T12:00:00Z",
+  ends: CAMPAIGN_ENDS,
 } as const;
 
 export interface CountedHire {

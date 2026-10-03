@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { CATEGORY_LABEL } from "@/lib/config";
 import type { Listing } from "@/lib/market/listing";
-import { hireHref, hirePath } from "@/lib/market/hire-law";
+import { hireHref, hirePath, primaryRail } from "@/lib/market/hire-law";
+import { tryFreeKind } from "@/lib/market/catalogue";
 import { assayFor } from "@/lib/market/assays";
 import { trustOf } from "@/lib/market/trust";
 import AgentArtwork from "./AgentArtwork";
@@ -22,7 +23,8 @@ import CompareToggle from "./CompareToggle";
  * reason sits there.
  */
 
-const RAIL: Record<string, string> = { x402: "x402", escrow: "ERC-8183 escrow", mandate: "job with capital" };
+// Short, so the exact amount and its rail fit on one line of a card; the agent page spells them out.
+const RAIL: Record<string, string> = { x402: "x402", escrow: "escrow", mandate: "job with capital" };
 // The chip sits on the art beside "Ours"; the full name is on the agent page.
 const SHORT: Record<string, string> = { "health-factor": "Health Factor" };
 
@@ -30,7 +32,11 @@ export default function AgentTile({ l, forPosition }: { l: Listing; forPosition?
   const verdict = hirePath(l);
   const href = hireHref(l.tokenId, verdict);
   const trust = trustOf(l, assayFor(l.tokenId));
-  const rail = verdict.rails.map((r) => RAIL[r.kind]).find(Boolean) ?? (l.quote || l.declaresPayment ? "x402" : null);
+  const lead = primaryRail(verdict);
+  const rail = (lead ? RAIL[lead.kind] : null) ?? (l.quote || l.declaresPayment ? "x402" : null);
+  // Try it before paying: we pay for a call to it, or it answers its task free (BNB's SDK).
+  const free = tryFreeKind(l, verdict);
+  const tryHref = free === "sponsored" ? `/agents/${l.tokenId}#sponsored` : free === "sdk" ? `/agents/${l.tokenId}#try` : null;
   const detail = `/agents/${l.tokenId}${forPosition ? `?about=${encodeURIComponent(forPosition)}` : ""}`;
   // An answer we checked against the chain ourselves outranks any other proof.
   const proof = l.checked?.verdict === "pass" ? "Passed MANDATE checks" : (trust.badges[0] ?? null);
@@ -68,7 +74,7 @@ export default function AgentTile({ l, forPosition }: { l: Listing; forPosition?
         <p className="x-agent__what">{l.what ?? "Published no description of what it does."}</p>
 
         <div className="x-agent__buy">
-          <Price l={l} rail={rail} />
+          <Price l={l} rail={rail} on={lead} />
           {proof ? (
             <span className="x-agent__proof">
               <Check size={13} strokeWidth={2.5} aria-hidden="true" />
@@ -78,9 +84,16 @@ export default function AgentTile({ l, forPosition }: { l: Listing; forPosition?
         </div>
 
         {verdict.ok && href ? (
-          <Link href={href} className="x-btn x-btn--sm x-btn--primary x-btn--block x-agent__hire">
-            Hire
-          </Link>
+          <div className={`x-agent__acts${tryHref ? " x-agent__acts--two" : ""}`}>
+            {tryHref ? (
+              <Link href={tryHref} className="x-btn x-btn--sm x-agent__try">
+                Try free
+              </Link>
+            ) : null}
+            <Link href={href} className="x-btn x-btn--sm x-btn--primary x-agent__hire">
+              Hire
+            </Link>
+          </div>
         ) : verdict.short ? (
           <p className="x-agent__why" title={verdict.reason ?? undefined}>
             {verdict.short}

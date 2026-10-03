@@ -24,6 +24,7 @@ import { latestConformance, type Latest } from "@/lib/conformance/run";
 
 const CONF_WORD: Record<string, string> = { pass: "Passed", fail: "Failed", "not-comparable": "Not comparable", unreadable: "Could not be checked", untested: "Not tested yet" };
 import { hirePath } from "@/lib/market/hire-law";
+import { tryFreeKind } from "@/lib/market/catalogue";
 import { hireCounts } from "@/lib/market/hires";
 import { SPONSORED } from "@/lib/market/sponsored-targets";
 import { STATE_WORD, trustOf, type ProofState } from "@/lib/market/trust";
@@ -145,6 +146,8 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const perCall = verdict.rails.find((r) => r.kind === "x402");
   const jobRail = verdict.rails.some((r) => r.kind === "mandate");
   const sponsor = verdict.ok ? SPONSORED[l.tokenId] : undefined;
+  // An outside seller on BNB's SDK that answers its task free, before a job is paid for.
+  const freeAnswer = !sponsor && tryFreeKind(l, verdict) === "sdk";
   const rail = verdict.rails.map((r) => RAIL[r.kind]).find(Boolean) ?? (l.quote || l.declaresPayment ? "x402" : null);
   const cat = l.category ? CATEGORY_LABEL[l.category] : null;
   const slug = slugOf;
@@ -239,6 +242,16 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                     Try it free
                   </a>
                   . Mandate pays for a few calls a day.
+                </span>
+              </p>
+            ) : freeAnswer ? (
+              <p className="x-ad-free">
+                <Gift size={15} aria-hidden="true" />
+                <span>
+                  <a className="x-link" href="#try">
+                    Try it free
+                  </a>
+                  . It answers your task before you pay, and nothing is signed.
                 </span>
               </p>
             ) : null}
@@ -697,8 +710,8 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
                 {useLabel}
               </a>
             ) : null}
-            {sponsor ? (
-              <a href="#sponsored" className="x-btn x-btn--block">
+            {sponsor || freeAnswer ? (
+              <a href={sponsor ? "#sponsored" : "#try"} className="x-btn x-btn--block">
                 <Gift size={16} aria-hidden="true" /> Try it free
               </a>
             ) : null}

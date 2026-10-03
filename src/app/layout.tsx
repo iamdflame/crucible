@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import Palette from "@/components/shell/Palette";
+import Landing from "@/components/x/Landing";
 import { SITE } from "@/lib/site";
 import "./tokens.css";
 import "./globals.css";
@@ -70,11 +71,17 @@ export default function RootLayout({
   // the tree is invalid at that point, which silently drops the page to the
   // browser's default face.
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* A visitor who closed the Set and Earn strip does not see it flash back on the next page (components/x/CampaignStrip). */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(sessionStorage.getItem("strip:set-and-earn")==="off")document.documentElement.dataset.strip="off"}catch(e){}` }} />
+      </head>
       <body>
         {children}
         {/* ⌘K, mounted once. It renders nothing until it is opened. */}
         <Palette />
+        {/* Where this visit came from, noted once for the hire funnel. Renders nothing. */}
+        <Landing />
         {/* Page views only, no cookies: how many people reach each step, for launch. */}
         <Analytics />
       </body>

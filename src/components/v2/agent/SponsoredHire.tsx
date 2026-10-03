@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { track } from "@/lib/ops/funnel-client";
 
 /**
  * Hiring a stranger with no wallet, because Mandate pays for it.
@@ -51,6 +52,7 @@ export default function SponsoredHire({
   const hire = async () => {
     setPhase("working");
     try {
+      track("try", tokenId);
       const res = await fetch("/api/judge/hire", {
         method: "POST",
         headers: { "content-type": "application/json" },

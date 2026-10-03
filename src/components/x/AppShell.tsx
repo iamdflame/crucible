@@ -1,4 +1,5 @@
 import Navbar from "./Navbar";
+import CampaignStrip from "./CampaignStrip";
 import Footer from "./Footer";
 import CompareTray from "./CompareTray";
 
@@ -15,6 +16,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <a className="x-skip" href="#main">
         Skip to content
       </a>
+      <CampaignStrip />
       <Navbar />
       <main id="main" className="x-main m-main">
         {children}

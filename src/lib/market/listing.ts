@@ -189,7 +189,13 @@ function escrowQuotes(): Record<string, EscrowQuote> {
 }
 
 /** An escrow price as a tag, "0.10 $U", when a buyer here can fund it. */
-export const escrowPriceLabel = (q: EscrowQuote | null): string | null => (q && !q.unpayable ? `${humanAmount(q.price, 18)} $U` : null);
+/** A token amount as a person reads it. A non-zero amount too small for four decimals reads "under 0.0001", never "0". */
+export const tokenAmount = (base: string, decimals = 18): string => {
+  const h = humanAmount(base, decimals);
+  return h === "0" && /^[1-9]\d*$/.test(base) ? "under 0.0001" : h;
+};
+
+export const escrowPriceLabel = (q: EscrowQuote | null): string | null => (q && !q.unpayable ? `${tokenAmount(q.price)} $U` : null);
 
 function probes(): Map<string, ProbeRow> {
   const current = getProbes();

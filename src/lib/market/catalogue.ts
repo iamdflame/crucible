@@ -15,10 +15,12 @@
 
 import { CATEGORIES, type Category } from "@/lib/config";
 import type { Listing } from "@/lib/market/listing";
-import { hirePath } from "@/lib/market/hire-law";
+import { hirePath, primaryRail, type HireVerdict } from "@/lib/market/hire-law";
 import { isOurs } from "@/lib/market/judge";
 import { assayFor } from "@/lib/market/assays";
 import { intentOf, type Intent } from "@/lib/market/intent";
+import { SPONSORED } from "@/lib/market/sponsored-targets";
+import { houseSlug } from "@/lib/market/performance";
 
 export type Sort = "recommended" | "recent" | "fastest" | "price" | "activity" | "evidence" | "newest";
 
@@ -28,7 +30,7 @@ export type Sort = "recommended" | "recent" | "fastest" | "price" | "activity" |
   call; "most activity" is paid work delivered, then reviews, then mandates.
 */
 export const SORTS: { id: Sort; label: string; how: string }[] = [
-  { id: "recommended", label: "Recommended", how: "Reachable now, then priced on a rail we can pay, then how clearly it matches the job, then past hires." },
+  { id: "recommended", label: "Recommended", how: "Hireable now first, then passed MANDATE checks, then reachable, priced on a rail we can pay, how clearly it matches the job, and past hires. Agents whose last paid work failed come last." },
   { id: "recent", label: "Recently active", how: "Answered our most recent check first." },
   { id: "fastest", label: "Fastest", how: "Quickest answer to our last call. Agents that did not answer come last." },
   { id: "price", label: "Lowest price", how: "Cheapest published price in dollar stablecoins. Unpriced agents come last." },
@@ -38,7 +40,23 @@ export const SORTS: { id: Sort; label: string; how: string }[] = [
 ];
 
 export const RECOMMENDED_RULE =
-  "Reachable now, then priced on a rail we can pay, then how clearly it matches the job, then past hires. Our own agents never outrank an equal agent we do not run.";
+  "Hireable now first, then passed MANDATE checks, then reachable, priced on a rail we can pay, how clearly it matches the job, and past hires. Agents whose last paid work failed come last. Our own agents never outrank an equal agent we do not run.";
+
+/**
+ * The marketplace's four doors. It opens on what can be hired, because a
+ * shelf that leads with agents nobody can pay is a shop that looks closed:
+ * on 3 October twelve of the first sixteen cards could not be hired. Every
+ * agent is still one tab away under All.
+ */
+export type View = "ready" | "free" | "checked" | "all";
+export const VIEWS: { id: View; label: string; short: string }[] = [
+  { id: "ready", label: "Ready to hire", short: "Ready to hire" },
+  { id: "free", label: "Try free", short: "Try free" },
+  { id: "checked", label: "Passed MANDATE checks", short: "Checked" },
+  { id: "all", label: "All agents", short: "All" },
+];
+/** A search looks everywhere (hireable first); a plain visit opens on what can be hired. */
+export const defaultView = (q: Pick<Query, "q">): View => (q.q.trim() ? "all" : "ready");
 
 export const PAGE = 24;
 
@@ -47,6 +65,8 @@ export interface Query {
   q: string;
   sort: Sort;
   n: number;
+  /** The tab. */
+  view: View;
   // availability
   hireable: boolean;
   live: boolean;
@@ -73,6 +93,8 @@ export const EMPTY: Query = {
   q: "",
   sort: "recommended",
   n: PAGE,
+  // Code that asks the catalogue a question sees everything; the page picks its own default.
+  view: "all",
   hireable: false,
   live: false,
   fresh: false,
@@ -97,13 +119,18 @@ export function parseQuery(sp: Params): Query {
   const sort = one("sort");
   const max = Number(one("max"));
   const rail = one("rail");
+  const q = (one("q") ?? "").slice(0, 100);
+  const view = one("view");
   return {
     category: CATEGORIES.includes(cat as Category) ? (cat as Category) : null,
-    q: (one("q") ?? "").slice(0, 100),
+    q,
+    // "hireable=1" is the old name for the Ready tab, and every link that still says it lands there.
+    view: VIEWS.some((v) => v.id === view) ? (view as View) : flag("hireable") ? "ready" : defaultView({ q }),
     // "checks" was the old default sort's name; it maps onto the same order.
     sort: SORTS.some((s) => s.id === sort) ? (sort as Sort) : "recommended",
     n: Math.min(400, Math.max(PAGE, Number(one("n")) || PAGE)),
-    hireable: flag("hireable"),
+    // Folded into the Ready tab; kept on the query for code that asks for it directly.
+    hireable: false,
     live: flag("live"),
     fresh: flag("fresh"),
     unique: flag("unique"),
@@ -125,6 +152,7 @@ export function hrefFor(q: Query, patch: Partial<Query>, base = "/agents"): stri
   const p = new URLSearchParams();
   if (next.category) p.set("category", next.category);
   if (next.q) p.set("q", next.q);
+  if (next.view !== defaultView(next)) p.set("view", next.view);
   for (const k of ["hireable", "live", "fresh", "unique", "checked", "capable", "assayed", "reviewed", "settled", "priced"] as const) if (next[k]) p.set(k, "1");
   if (next.max) p.set("max", String(next.max));
   if (next.proto) p.set("proto", next.proto);
@@ -162,7 +190,31 @@ export const PRED = {
   priced: (l: Listing) => Boolean(l.quote),
   x402: (l: Listing) => Boolean(l.quote) || l.declaresPayment,
   job: (l: Listing) => hirePath(l).rails.some((r) => r.kind === "mandate"),
+  tryFree: (l: Listing) => tryFreeKind(l) !== null,
 } as const;
+
+/**
+ * Whether a buyer can try it before paying, and how: we pay for a call to it
+ * (sponsored), or it is an outside seller on BNB's SDK whose free answer our
+ * last check could read. The drawer offers exactly these (components/x/offer).
+ */
+export function tryFreeKind(l: Listing, v: HireVerdict = hirePath(l)): "sponsored" | "sdk" | null {
+  if (!v.ok) return null;
+  if (SPONSORED[l.tokenId]) return "sponsored";
+  const escrow = v.rails.some((r) => r.kind === "escrow");
+  if (escrow && !houseSlug(l.tokenId) && l.escrowQuote?.kind === "sdk" && l.checked?.verdict !== "unreadable") return "sdk";
+  return null;
+}
+
+/** What hiring it costs in dollars, on the rail Hire uses: an escrowed job's $U budget, else its per-call price. */
+export function hirePriceUsd(l: Listing, v: HireVerdict = hirePath(l)): number | null {
+  const r = primaryRail(v);
+  if (r?.kind === "escrow") return Number(r.wei) / 1e18;
+  return l.usdPrice;
+}
+
+/** Failures on record, which sink an agent below every other one we cannot hire. */
+const FAILED = new Set(["Took payment, returned an error", "Refused a correct payment", "Missed an escrowed job"]);
 
 export interface Result {
   shown: Listing[];
@@ -176,9 +228,17 @@ export function applyQuery(all: Listing[], q: Query): Result {
   const needle = q.q.trim().toLowerCase();
   const intent = needle ? intentOf(needle) : null;
 
+  // One hire verdict per agent per question: the sort compares thousands of pairs.
+  const verdicts = new Map<Listing, HireVerdict>();
+  const verdict = (l: Listing) => verdicts.get(l) ?? verdicts.set(l, hirePath(l)).get(l)!;
+  const standing = (l: Listing) => (verdict(l).ok ? 2 : FAILED.has(verdict(l).short ?? "") ? 0 : 1);
+
   const base = all.filter((l) => {
     if (q.category && l.category !== q.category) return false;
-    if (q.hireable && !PRED.hireable(l)) return false;
+    if (q.view === "ready" && !verdict(l).ok) return false;
+    if (q.view === "free" && tryFreeKind(l, verdict(l)) === null) return false;
+    if (q.view === "checked" && !PRED.checked(l)) return false;
+    if (q.hireable && !verdict(l).ok) return false;
     if (q.live && !PRED.live(l)) return false;
     if (q.fresh && !PRED.fresh(l)) return false;
     if (q.unique && !PRED.unique(l)) return false;
@@ -197,7 +257,12 @@ export function applyQuery(all: Listing[], q: Query): Result {
 
   const ours = (l: Listing) => Number(isOurs(l));
   const cmp: Record<Sort, (a: Listing, b: Listing) => number> = {
-    recommended: (a, b) => b.readiness - a.readiness || ours(a) - ours(b) || b.confidence - a.confidence,
+    recommended: (a, b) =>
+      standing(b) - standing(a) ||
+      Number(PRED.checked(b)) - Number(PRED.checked(a)) ||
+      b.readiness - a.readiness ||
+      ours(a) - ours(b) ||
+      b.confidence - a.confidence,
     // Agents that answered come first in both of these; a silent one has no speed.
     fastest: (a, b) =>
       Number(!a.probe?.answered) - Number(!b.probe?.answered) ||
@@ -235,8 +300,8 @@ export function topProtocols(all: Listing[], n = 8): { name: string; count: numb
 }
 
 export function isFiltered(q: Query): boolean {
-  const { sort: _s, n: _n, ...rest } = q;
-  return JSON.stringify(rest) !== JSON.stringify((({ sort: _a, n: _b, ...r }) => r)(EMPTY));
+  const { sort: _s, n: _n, view: _v, ...rest } = q;
+  return JSON.stringify(rest) !== JSON.stringify((({ sort: _a, n: _b, view: _c, ...r }) => r)(EMPTY));
 }
 
 export interface CategoryStats {
@@ -244,7 +309,7 @@ export interface CategoryStats {
   live: number;
   priced: number;
   hireable: number;
-  /** Cheapest dollar-stablecoin price in the category, or null when none is published. */
+  /** Cheapest price among the agents you can hire in the category, on the rail Hire uses, or null when none is. */
   from: number | null;
 }
 
@@ -253,7 +318,12 @@ export function categoryStats(all: Listing[]): Record<Category, CategoryStats> {
   return Object.fromEntries(
     CATEGORIES.map((c) => {
       const here = all.filter((l) => l.category === c);
-      const prices = here.map((l) => l.usdPrice).filter((p): p is number => p !== null);
+      // "From" is what the cheapest agent you can hire costs on the rail Hire uses, so the tile never quotes a price nobody can pay.
+      const prices = here
+        .map((l) => ({ l, v: hirePath(l) }))
+        .filter(({ v }) => v.ok)
+        .map(({ l, v }) => hirePriceUsd(l, v))
+        .filter((p): p is number => p !== null);
       return [
         c,
         {

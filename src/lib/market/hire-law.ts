@@ -97,6 +97,8 @@ export type Rail =
       kind: "escrow";
       /** The budget as a person reads it, e.g. "0.10 $U". */
       price: string;
+      /** The same budget in $U base units (18 decimals), for figures. */
+      wei: string;
       /** The wallet the job names as provider. */
       provider: string;
     };
@@ -206,9 +208,9 @@ export function hirePath(
   const eq = l.escrowQuote;
   const house = ours && ESCROW_OPEN ? houseProvider(l.tokenId) : null;
   if (house) {
-    rails.unshift({ kind: "escrow", price: `${humanAmount(HOUSE_BUDGET.toString(), 18)} $U`, provider: house });
+    rails.unshift({ kind: "escrow", price: `${humanAmount(HOUSE_BUDGET.toString(), 18)} $U`, wei: HOUSE_BUDGET.toString(), provider: house });
   } else if (eq && !eq.unpayable && !ours && !missed) {
-    rails.unshift({ kind: "escrow", price: escrowPriceLabel(eq) ?? `${eq.price} $U`, provider: eq.provider });
+    rails.unshift({ kind: "escrow", price: escrowPriceLabel(eq) ?? `${eq.price} $U`, wei: eq.price, provider: eq.provider });
   }
   // A job hands it capital to act with, which a trading pause forbids; its paid answer does not.
   // Jobs are offered only while the market settles them on its own (lib/market/jobs-open).

@@ -17,7 +17,9 @@ import {
   SORTS,
   topProtocols,
   EMPTY,
+  VIEWS,
   type Query,
+  type View,
 } from "@/lib/market/catalogue";
 import { live } from "@/lib/data/live";
 
@@ -64,7 +66,6 @@ export default async function AgentsPage({
   // Every active filter as a pill that removes itself, like a shop's.
   const pills: { label: string; href: string }[] = [
     ...(q.q ? [{ label: `“${q.q}”`, href: hrefFor(q, { q: "", n: EMPTY.n }) }] : []),
-    ...(q.hireable ? [{ label: "Hireable now", href: hrefFor(q, { hireable: false }) }] : []),
     ...(q.live ? [{ label: "Answers as an agent", href: hrefFor(q, { live: false }) }] : []),
     ...(q.fresh ? [{ label: "Checked in the last day", href: hrefFor(q, { fresh: false }) }] : []),
     ...(q.unique ? [{ label: "One per product", href: hrefFor(q, { unique: false }) }] : []),
@@ -83,6 +84,7 @@ export default async function AgentsPage({
   // advertise results it does not have.
   const scope = q.category ? all.filter((l) => l.category === q.category) : all;
   const count = (pred: (l: (typeof all)[number]) => boolean) => scope.filter(pred).length;
+  const tabCount: Record<View, number> = { ready: count(PRED.hireable), free: count(PRED.tryFree), checked: count(PRED.checked), all: scope.length };
 
   const Toggle = ({ k, label, n }: { k: keyof Query; label: string; n: number }) => {
     const on = Boolean(q[k]);
@@ -101,7 +103,6 @@ export default async function AgentsPage({
     <div className="x-rail__groups">
       <details className="x-rail__group" open>
         <summary>Availability</summary>
-        <Toggle k="hireable" label="Hireable now" n={count(PRED.hireable)} />
         <Toggle k="live" label="Answers as an agent" n={count(PRED.live)} />
         <Toggle k="fresh" label="Checked in the last day" n={count(PRED.fresh)} />
         <Toggle k="unique" label="One per product" n={count(PRED.unique)} />
@@ -195,6 +196,23 @@ export default async function AgentsPage({
           </p>
         ) : null}
 
+        {/* The shop opens on what can be hired; everything else is one tab away. */}
+        <nav className="x-tabs" aria-label="Which agents">
+          {VIEWS.map((v) => (
+            <Link
+              key={v.id}
+              href={hrefFor(q, { view: v.id, n: EMPTY.n })}
+              className={`x-tab${q.view === v.id ? " x-tab--on" : ""}`}
+              aria-current={q.view === v.id ? "page" : undefined}
+              scroll={false}
+            >
+              <span className="x-tab__long">{v.label}</span>
+              <span className="x-tab__short">{v.short}</span>
+              <span className="x-tab__n">{tabCount[v.id].toLocaleString("en-US")}</span>
+            </Link>
+          ))}
+        </nav>
+
         <form className="x-searchbar" action="/agents" method="get" role="search">
           <Search size={18} className="x-searchbar__i" aria-hidden="true" />
           <label htmlFor="agents-q" className="x-sr">
@@ -240,17 +258,8 @@ export default async function AgentsPage({
             <div className="x-mkt-bar__lead">
               <p className="x-mkt-bar__n">
                 <strong className="x-num">{shown.length}</strong> {shown.length === 1 ? "agent" : "agents"}
+                {q.view === "ready" ? " you can hire now" : q.view === "free" ? " you can try before paying" : q.view === "checked" ? " whose answers matched the chain" : ""}
               </p>
-              {/* The one filter most visitors want, out of the sheet and in reach. */}
-              <Link
-                href={hrefFor(q, { hireable: !q.hireable, n: EMPTY.n })}
-                className={`x-chip${q.hireable ? " x-chip--on" : ""}`}
-                aria-pressed={q.hireable}
-                scroll={false}
-              >
-                {q.hireable ? <Check size={13} strokeWidth={3} aria-hidden="true" /> : null}
-                Hireable now <span className="x-chip__n">{count(PRED.hireable)}</span>
-              </Link>
             </div>
 
             <div className="x-mkt-bar__ctl">
@@ -299,7 +308,7 @@ export default async function AgentsPage({
                 </li>
               ))}
               <li>
-                <Link href={hrefFor(EMPTY, { category: q.category, sort: q.sort })} className="x-pills__clear" scroll={false}>
+                <Link href={hrefFor(EMPTY, { category: q.category, sort: q.sort, view: q.view })} className="x-pills__clear" scroll={false}>
                   Clear all
                 </Link>
               </li>
@@ -342,18 +351,25 @@ export default async function AgentsPage({
             <Empty
               title="No agents match these filters."
               action={
-                <Link href={hrefFor(EMPTY, {})} className="x-btn x-btn--primary">
+                <Link href={hrefFor({ ...EMPTY, view: "ready" }, {})} className="x-btn x-btn--primary">
                   Clear filters
                 </Link>
               }
             >
               <p>Try one of these:</p>
               <ul>
+                {q.view !== "all" ? (
+                  <li>
+                    <Link className="x-link" href={hrefFor(q, { view: "all", n: EMPTY.n })} scroll={false}>
+                      look at all agents
+                    </Link>
+                    , including those that cannot be hired right now
+                  </li>
+                ) : null}
                 {q.checked || q.capable || q.assayed || q.settled ? <li>remove a Trust filter, most agents have not been fully checked yet</li> : null}
                 {q.max !== null ? <li>raise or remove the price limit</li> : null}
                 {q.category ? <li>show all categories</li> : null}
                 {q.q ? <li>search for a job rather than a name, such as “protect a loan”</li> : null}
-                {q.hireable ? <li>turn off Hireable now to see agents that answered but cannot be paid yet</li> : null}
               </ul>
             </Empty>
           )}

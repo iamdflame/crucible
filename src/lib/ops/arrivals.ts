@@ -10,25 +10,10 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { sql as pg } from "@/lib/db/client";
 import { ensureTables } from "@/lib/db/tables";
+import { sourceOf } from "@/lib/ops/source";
 
 const BOT = /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|quora link|whatsapp|telegram|discord|vercel|curl|wget|python|node-fetch|headless/i;
-const clean = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 40) || null;
-
-/** The source an arrival is filed under: utm tags first, then the referring host, then direct. Pure, for tests. */
-export function sourceOf(sp: Record<string, string | string[] | undefined>, referer: string | null, host: string): string {
-  const src = clean(sp.utm_source);
-  if (src) return [src, clean(sp.utm_medium), clean(sp.utm_campaign), clean(sp.utm_content)].filter(Boolean).join("/");
-  if (referer) {
-    try {
-      const r = new URL(referer).host.replace(/^www\./, "");
-      if (r && r !== host.replace(/^www\./, "")) return r === "t.co" ? "x.com" : r;
-      return "internal";
-    } catch {
-      /* fall through */
-    }
-  }
-  return "direct";
-}
+export { sourceOf };
 
 /** Counts this request as an arrival at `path`, after the page has been sent. */
 export async function countArrival(path: string, sp: Record<string, string | string[] | undefined>): Promise<void> {
@@ -52,3 +37,15 @@ export async function countCheck(tokenId: string): Promise<void> {
   await ensureTables();
   await pg`insert into checks_daily (day, token_id) values (current_date, ${tokenId}) on conflict do nothing`.catch(() => undefined);
 }
+
+/** The steps of a hire a visitor can reach, counted per day like arrivals: path "hire:<step>:<agent id>". */
+export const FUNNEL_STEPS = ["open", "try", "funded", "paid"] as const;
+export type FunnelStep = (typeof FUNNEL_STEPS)[number];
+
+export async function countStep(step: FunnelStep, tokenId: string, source: string): Promise<void> {
+  if (!pg) return;
+  await ensureTables();
+  await pg`insert into arrivals (day, path, source, n) values (current_date, ${`hire:${step}:${tokenId}`}, ${source}, 1) on conflict (day, path, source) do update set n = arrivals.n + 1`.catch(() => undefined);
+}
+
+export { BOT };

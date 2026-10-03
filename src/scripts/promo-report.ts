@@ -27,22 +27,39 @@ async function main() {
   const calls = (await sql`
     select at::date::text as day, coalesce(record->>'payer', '') as payer from paid_calls where at > now() - ${since}::interval and paid and not sponsored`.catch(() => [])) as { day: string; payer: string }[];
 
-  const byDay = new Map<string, { check: number; quest: number; sources: Map<string, number>; agents: number; hires: number; wallets: Set<string> }>();
-  const row = (d: string) => byDay.get(d) ?? byDay.set(d, { check: 0, quest: 0, sources: new Map(), agents: 0, hires: 0, wallets: new Set() }).get(d)!;
+  const byDay = new Map<string, { check: number; quest: number; sources: Map<string, number>; agents: number; hires: number; wallets: Set<string>; open: number; tried: number; paid: number }>();
+  const row = (d: string) =>
+    byDay.get(d) ?? byDay.set(d, { check: 0, quest: 0, sources: new Map(), agents: 0, hires: 0, wallets: new Set(), open: 0, tried: 0, paid: 0 }).get(d)!;
+  // Hire steps are filed as "hire:<step>:<agent id>" (lib/ops/arrivals countStep); pages by their path.
+  const steps = new Map<string, number>();
   for (const a of arrivals) {
     const r = row(a.day);
+    const step = a.path.match(/^hire:(open|try|funded|paid):(\d+)$/);
+    if (step) {
+      if (step[1] === "open") r.open += a.n;
+      else if (step[1] === "try") r.tried += a.n;
+      else r.paid += a.n;
+      steps.set(`${step[1]} #${step[2]}`, (steps.get(`${step[1]} #${step[2]}`) ?? 0) + a.n);
+      continue;
+    }
     if (a.path === "/check") r.check += a.n;
-    else r.quest += a.n;
+    else if (a.path === "/quest") r.quest += a.n;
     r.sources.set(a.source, (r.sources.get(a.source) ?? 0) + a.n);
   }
   for (const c of checks) row(c.day).agents = c.agents;
   for (const j of jobs) if (!isTeam(j.client)) { const r = row(j.day); r.hires += 1; r.wallets.add(j.client.toLowerCase()); }
   for (const c of calls) if (c.payer && !isTeam(c.payer)) { const r = row(c.day); r.hires += 1; r.wallets.add(c.payer.toLowerCase()); }
 
-  console.log(`day         /check  /quest  agents checked  hires (wallets)  top sources`);
+  console.log(`day         /check  /quest  agents checked  opened  tried  paid  hires (wallets)  top sources`);
   for (const [d, r] of [...byDay.entries()].sort()) {
     const top = [...r.sources.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([s, n]) => `${s} ${n}`).join(", ");
-    console.log(`${d}  ${String(r.check).padStart(6)}  ${String(r.quest).padStart(6)}  ${String(r.agents).padStart(14)}  ${String(r.hires).padStart(5)} (${r.wallets.size})${" ".repeat(Math.max(1, 8 - String(r.wallets.size).length))}${top}`);
+    console.log(
+      `${d}  ${String(r.check).padStart(6)}  ${String(r.quest).padStart(6)}  ${String(r.agents).padStart(14)}  ${String(r.open).padStart(6)}  ${String(r.tried).padStart(5)}  ${String(r.paid).padStart(4)}  ${String(r.hires).padStart(5)} (${r.wallets.size})${" ".repeat(Math.max(1, 8 - String(r.wallets.size).length))}${top}`,
+    );
+  }
+  if (steps.size) {
+    console.log(`\nhire steps by agent, last ${days} days:`);
+    for (const [k, n] of [...steps.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15)) console.log(`  ${String(n).padStart(6)}  ${k}`);
   }
   const ads = new Map<string, number>();
   for (const a of arrivals) if (/\/paid\//.test(a.source)) ads.set(a.source, (ads.get(a.source) ?? 0) + a.n);

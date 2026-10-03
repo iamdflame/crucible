@@ -1,4 +1,6 @@
 import type { Listing } from "@/lib/market/listing";
+import type { Rail } from "@/lib/market/hire-law";
+import { tokenAmount } from "@/lib/market/listing";
 
 /**
  * A price that looks like a price.
@@ -18,6 +20,17 @@ export function usd(n: number): string {
   return `$${n.toFixed(Math.max(2, decimals))}`;
 }
 
+/**
+ * A price, as opposed to any dollar figure: nothing reads "$0.00". A quote of
+ * zero is free, and one too small to show in four decimals (a seller once
+ * priced a job at one base unit of $U) says so instead of rounding to nothing.
+ */
+export function priceUsd(n: number): string {
+  if (n === 0) return "Free";
+  if (n > 0 && n < 0.0001) return "<$0.0001";
+  return usd(n);
+}
+
 export interface PriceParts {
   /** The big figure. */
   value: string | null;
@@ -29,10 +42,19 @@ export interface PriceParts {
   none: string | null;
 }
 
-export function priceParts(l: Pick<Listing, "usdPrice" | "priceLabel" | "declaresPayment"> & Partial<Pick<Listing, "quote" | "escrowQuote">>): PriceParts {
+/**
+ * The price parts. Given the rail Hire will use, the price is that rail's: an
+ * escrowed job is paid in $U whatever token the agent's own 402 names, so a
+ * card that leads with the job must not show the per-call token beside it.
+ */
+export function priceParts(
+  l: Pick<Listing, "usdPrice" | "priceLabel" | "declaresPayment"> & Partial<Pick<Listing, "quote" | "escrowQuote">>,
+  rail?: Rail | null,
+): PriceParts {
+  if (rail?.kind === "escrow") return { value: priceUsd(Number(rail.wei) / 1e18), unit: "/ job", exact: `${tokenAmount(rail.wei)} $U`, none: null };
   // A seller that only takes escrowed jobs is priced per job, not per call.
   const unit = !l.quote && l.escrowQuote && !l.escrowQuote.unpayable ? "/ job" : "/ call";
-  if (l.usdPrice !== null && l.usdPrice !== undefined) return { value: usd(l.usdPrice), unit, exact: l.priceLabel, none: null };
+  if (l.usdPrice !== null && l.usdPrice !== undefined) return { value: priceUsd(l.usdPrice), unit, exact: l.priceLabel, none: null };
   if (l.priceLabel) return { value: l.priceLabel, unit, exact: null, none: null };
   if (l.declaresPayment) return { value: null, unit: null, exact: null, none: "Paid, price not read yet" };
   return { value: null, unit: null, exact: null, none: "No price published" };
@@ -43,6 +65,7 @@ export default function Price({
   size = "md",
   from = false,
   rail,
+  on,
 }: {
   l: Pick<Listing, "usdPrice" | "priceLabel" | "declaresPayment"> & Partial<Pick<Listing, "quote" | "escrowQuote">>;
   size?: "sm" | "md" | "lg";
@@ -50,8 +73,10 @@ export default function Price({
   from?: boolean;
   /** The payment rail, shown next to the exact amount. */
   rail?: string | null;
+  /** The rail Hire uses, whose price this shows. */
+  on?: Rail | null;
 }) {
-  const p = priceParts(l);
+  const p = priceParts(l, on);
   if (!p.value) {
     return (
       <span className={`x-price x-price--${size} x-price--none`}>

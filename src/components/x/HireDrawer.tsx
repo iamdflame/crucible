@@ -12,6 +12,7 @@ import RateAgent from "./RateAgent";
 import EscrowHire, { type EscrowOffer } from "./EscrowHire";
 import NeedHelp from "./NeedHelp";
 import { useWallet } from "@/lib/chain/wallet";
+import { track } from "@/lib/ops/funnel-client";
 import type { CallInput } from "@/lib/market/inputs";
 
 /**
@@ -138,7 +139,13 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
     [values, offer.inputs],
   );
 
-  // The address decides: #call opens the flow, #sponsored opens the free option.
+  // Each opening counts once toward the hire funnel (lib/ops/funnel-client).
+  useEffect(() => {
+    if (open) track("open", offer.tokenId);
+  }, [open, offer.tokenId]);
+
+  // The address decides: #call opens the flow, #sponsored the free call we pay for, #try the agent's own free answer.
+  const tryable = Boolean(offer.escrow?.outside?.tryable);
   useEffect(() => {
     const read = () => {
       const h = window.location.hash;
@@ -148,17 +155,26 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
       } else if (!openOn && h === "#sponsored" && offer.sponsored) {
         setOpen(true);
         setStep("free");
+      } else if (!openOn && h === "#try" && tryable) {
+        setOpen(true);
+        setStep((s) => (s === "free" ? "review" : s));
+        // Straight to the free try, once the drawer has slid in.
+        window.setTimeout(() => {
+          const b = document.querySelector<HTMLButtonElement>(".x-hire__try button");
+          b?.scrollIntoView({ block: "center", behavior: "smooth" });
+          b?.focus({ preventScroll: true });
+        }, 360);
       }
     };
     read();
     window.addEventListener("hashchange", read);
     return () => window.removeEventListener("hashchange", read);
-  }, [offer.sponsored, openOn]);
+  }, [offer.sponsored, openOn, tryable]);
 
   const close = useCallback(() => {
     setOpen(false);
     onDone?.();
-    if (/^#(call|hire|sponsored)$/.test(window.location.hash) || (openOn && window.location.hash === openOn)) {
+    if (/^#(call|hire|sponsored|try)$/.test(window.location.hash) || (openOn && window.location.hash === openOn)) {
       history.replaceState(null, "", window.location.pathname + window.location.search);
     }
     // A finished or failed payment starts fresh next time; one in flight keeps its place.
@@ -182,8 +198,9 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
     if (p.at === "done") {
       setResult({ tx: p.tx ?? null, body: p.body });
       setStep("success");
+      track("paid", offer.tokenId);
     }
-  }, []);
+  }, [offer.tokenId]);
 
   const price = offer.price.value ? `${offer.price.value} ${offer.price.unit ?? ""}`.trim() : offer.price.none ?? "No price published";
   /*
@@ -201,6 +218,7 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
   const tryIt = async () => {
     setTrying(true);
     setTried(null);
+    track("try", offer.tokenId);
     try {
       const r = await fetch("/api/try", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tokenId: offer.tokenId, inputs: sent }) });
       const j = await r.json();

@@ -5,7 +5,7 @@ import { latestReceipt } from "@/lib/market/receipt";
 import { formatUnits } from "viem";
 import AppShell from "@/components/v2/shell/AppShell";
 import AgentTile from "@/components/x/AgentTile";
-import { usd } from "@/components/x/Price";
+import { priceUsd } from "@/components/x/Price";
 import { CATEGORIES, CATEGORY_LABEL, type Category } from "@/lib/config";
 import { censusAge, listings } from "@/lib/market/listing";
 import { hireCounts } from "@/lib/market/hires";
@@ -117,7 +117,7 @@ export default async function Home() {
                     <span className="x-home__job-d">{line}</span>
                     <span className="x-home__job-f">
                       <span>{s.hireable} hireable</span>
-                      {s.from !== null ? <span>from {usd(s.from)}</span> : null}
+                      {s.from !== null ? <span>from {priceUsd(s.from)}</span> : null}
                     </span>
                   </Link>
                 </li>

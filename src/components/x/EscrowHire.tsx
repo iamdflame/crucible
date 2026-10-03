@@ -9,6 +9,7 @@ import OpenInWallet from "./OpenInWallet";
 import RateAgent from "./RateAgent";
 import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, outsideDescription, POLICY_ABI, ROUTER_ABI, TOKEN_ABI, VIA } from "@/lib/escrow/contracts";
 import { canBatch, NotBatchable, sendBatch } from "@/lib/escrow/batch";
+import { track } from "@/lib/ops/funnel-client";
 
 /**
  * Hiring an agent through ERC-8183 escrow, from the buyer's own wallet.
@@ -107,17 +108,23 @@ export default function EscrowHire({
     buyer paid for and waits on until it lapses.
   */
   const recordBody = useRef<string | null>(null);
+  const counted = useRef(false);
   const record = useCallback(async (): Promise<boolean> => {
     if (!recordBody.current) return false;
     for (let i = 0; i < 6; i++) {
       const r = await fetch("/api/escrow/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: recordBody.current }).catch(() => null);
-      if (r?.ok) return true;
+      if (r?.ok) {
+        // A funded job counts once toward the hire funnel, however often it is recorded.
+        if (!counted.current) track("funded", offer.tokenId);
+        counted.current = true;
+        return true;
+      }
       // A plain refusal will not change on a retry; not-found-yet, too-many and server errors can.
       if (r && r.status >= 400 && r.status < 500 && r.status !== 404 && r.status !== 429) return false;
       await new Promise((ok) => setTimeout(ok, 3_000));
     }
     return false;
-  }, []);
+  }, [offer.tokenId]);
 
   const poll = useCallback(async (id: bigint) => {
     for (let i = 0; i < 60; i++) {
