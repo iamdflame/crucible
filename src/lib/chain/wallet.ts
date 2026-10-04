@@ -51,6 +51,40 @@ export interface WalletState {
 
 const toHexChain = (id: number) => `0x${id.toString(16)}`;
 
+/*
+  Wallets that only announce themselves (EIP-6963) and never set
+  window.ethereum. The site saw them and showed Connect, but every call read
+  window.ethereum, so pressing Connect did nothing at all (4 Oct). The first
+  one to announce is adopted as window.ethereum when nothing else has set it,
+  so every path (connect, payments, batches) reaches it without knowing.
+*/
+if (typeof window !== "undefined") {
+  const adopt = (e: Event) => {
+    const provider = (e as CustomEvent<{ provider?: EIP1193Provider }>).detail?.provider;
+    if (!provider || window.ethereum) return;
+    try {
+      window.ethereum = provider;
+    } catch {
+      /* window.ethereum is a fixed property here; that wallet set it, and it is used. */
+    }
+  };
+  window.addEventListener("eip6963:announceProvider", adopt);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+}
+
+/** Why a connection did not happen, in words a person can act on. */
+export function connectWords(error: unknown): string {
+  const e = error as { code?: number; message?: string } | null;
+  const m = e?.message ?? String(error);
+  if (e?.code === 4001 || /reject|denied|cancel/i.test(m)) return "The connection was cancelled in your wallet. Press Connect to try again.";
+  if (e?.code === -32002 || /already pending|already processing/i.test(m)) {
+    return "Your wallet already has a connection request open. Open your wallet (its icon in the browser bar, or the app) and approve it there.";
+  }
+  if (/No wallet found/i.test(m)) return "No wallet found in this browser. Install MetaMask or another BNB Smart Chain wallet, or on a phone open this page in your wallet app.";
+  if (/locked|unlock/i.test(m)) return "Your wallet is locked. Unlock it, then press Connect again.";
+  return `Your wallet did not connect: ${m.slice(0, 140)}`;
+}
+
 /**
  * Whether this browser has ever connected a wallet to this origin.
  *
@@ -240,16 +274,25 @@ export function useWallet() {
     };
   }, [refresh]);
 
+  // Why the last press of Connect failed, for the button that was pressed to say so.
+  const [connectError, setConnectError] = useState<string | null>(null);
   const connect = useCallback(async () => {
-    const provider = window.ethereum;
-    if (!provider) throw new Error("No wallet found in this browser.");
-    const accounts = (await provider.request({
-      method: "eth_requestAccounts",
-    })) as Address[];
-    // Remembered so a later visit can reflect the connection silently. This is
-    // the only thing that licenses touching the provider on mount.
-    rememberConnected();
-    await refresh(accounts[0] ?? null);
+    setConnectError(null);
+    try {
+      const provider = window.ethereum;
+      if (!provider) throw new Error("No wallet found in this browser.");
+      const accounts = (await provider.request({
+        method: "eth_requestAccounts",
+      })) as Address[];
+      if (!accounts?.length) throw new Error("The wallet shared no account. It may be locked: unlock it and try again.");
+      // Remembered so a later visit can reflect the connection silently. This is
+      // the only thing that licenses touching the provider on mount.
+      rememberConnected();
+      await refresh(accounts[0] ?? null);
+    } catch (e) {
+      setConnectError(connectWords(e));
+      throw e;
+    }
   }, [refresh]);
 
   /** Asks the wallet to move to the market's chain, adding it if unknown. */
@@ -305,7 +348,7 @@ export function useWallet() {
     }
   }, []);
 
-  return { ...state, connect, switchChain, refresh, disconnect };
+  return { ...state, connect, connectError, switchChain, refresh, disconnect };
 }
 
 /**

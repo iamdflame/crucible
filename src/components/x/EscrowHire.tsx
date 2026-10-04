@@ -56,7 +56,7 @@ export default function EscrowHire({
   inputs?: Record<string, string>;
   category?: string | null;
 }) {
-  const { address, ready, connect, switchChain, available } = useWallet();
+  const { address, ready, connect, connectError, switchChain, available } = useWallet();
   const budget = BigInt(offer.budget);
   const [disputeWindow, setDisputeWindow] = useState<bigint | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
@@ -344,9 +344,16 @@ export default function EscrowHire({
     );
   if (!address)
     return (
-      <button type="button" className="x-btn x-btn--block" onClick={connect}>
-        Connect a wallet
-      </button>
+      <div className="x-escrow">
+        <button type="button" className="x-btn x-btn--block" onClick={() => void connect().catch(() => undefined)}>
+          Connect a wallet
+        </button>
+        {connectError ? (
+          <p className="x-escrow__err" role="alert">
+            {connectError}
+          </p>
+        ) : null}
+      </div>
     );
   if (!ready)
     return (

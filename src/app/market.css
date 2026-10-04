@@ -343,6 +343,36 @@ html:has(.x-app) body {
   }
 }
 
+/* Connect in the header, and why a press came to nothing. */
+.x-conn {
+  position: relative;
+  display: inline-flex;
+}
+.x-conn__err {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  right: 0;
+  z-index: 60;
+  width: min(300px, 80vw);
+  padding: var(--s-3);
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-elevated);
+  box-shadow: var(--shadow-2);
+  font-size: var(--ts-xs);
+  line-height: 1.45;
+  white-space: normal;
+  color: var(--c-text);
+}
+.x-drop__wallet .x-conn {
+  display: grid;
+  gap: var(--s-2);
+}
+.x-drop__wallet .x-conn__err {
+  position: static;
+  width: auto;
+}
+
 /* ====================================================== campaign strip === */
 
 /* One line above the nav while Set and Earn runs (components/x/CampaignStrip). */

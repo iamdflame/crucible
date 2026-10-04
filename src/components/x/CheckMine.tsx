@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet } from "lucide-react";
-import { useWallet } from "@/lib/chain/wallet";
+import { connectWords, useWallet } from "@/lib/chain/wallet";
 
 /**
  * "Use my wallet" on /check: most builders know the wallet they registered
@@ -33,8 +33,8 @@ export default function CheckMine() {
       const [first] = ((await window.ethereum.request({ method: "eth_accounts" })) as string[] | undefined) ?? [];
       if (first) router.push(`/check?q=${first}`);
       else setError("The wallet did not share an address. Paste it instead.");
-    } catch {
-      setError("The wallet did not connect. Paste the wallet address you registered from instead.");
+    } catch (e) {
+      setError(`${connectWords(e)} Or paste the wallet address you registered from.`);
     } finally {
       setBusy(false);
     }

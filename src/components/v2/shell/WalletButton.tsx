@@ -22,7 +22,7 @@ const CHAINS: Record<number, string> = { 1: "Ethereum", 10: "OP Mainnet", 97: "B
 const chainName = (id: number | null) => (id === null ? "Unknown network" : `${CHAINS[id] ?? "Another network"}, chain ${id}`);
 
 export default function WalletButton() {
-  const { address, ready, available, chainId, balanceWei, connect, switchChain, disconnect } = useWallet();
+  const { address, ready, available, chainId, balanceWei, connect, connectError, switchChain, disconnect } = useWallet();
   const ref = useRef<HTMLDetailsElement>(null);
   const [copied, setCopied] = useState(false);
   // Set and Earn, as far as this site can count it: different agents this wallet hired here. Read when the panel opens.
@@ -82,9 +82,17 @@ export default function WalletButton() {
 
   if (!address) {
     return (
-      <button className="x-btn x-btn--sm x-btn--primary" onClick={() => void connect().catch(() => undefined)} type="button">
-        Connect wallet
-      </button>
+      <span className="x-conn">
+        <button className="x-btn x-btn--sm x-btn--primary" onClick={() => void connect().catch(() => undefined)} type="button">
+          Connect wallet
+        </button>
+        {/* A press that came to nothing says why, where it was pressed: it used to fail in silence. */}
+        {connectError ? (
+          <span className="x-conn__err" role="alert">
+            {connectError}
+          </span>
+        ) : null}
+      </span>
     );
   }
 

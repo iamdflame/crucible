@@ -42,7 +42,7 @@ type Phase = "idle" | "planning" | "signing" | "confirming" | "recording" | "don
  * a time, rather than ten signatures in a row.
  */
 export default function HirePack({ agents }: { agents: PackAgent[] }) {
-  const { address, ready, available, connect, switchChain } = useWallet();
+  const { address, ready, available, connect, connectError, switchChain } = useWallet();
   const [batch, setBatch] = useState<boolean | null>(null);
   const [u, setU] = useState<bigint | null>(null);
   const [bnb, setBnb] = useState<bigint | null>(null);
@@ -207,9 +207,16 @@ export default function HirePack({ agents }: { agents: PackAgent[] }) {
           <OpenInWallet label="Open this page in your wallet app" />
         </div>
       ) : !address ? (
-        <button type="button" className="x-btn x-btn--primary x-btn--lg x-btn--block" onClick={() => void connect().catch(() => undefined)}>
-          Connect your campaign wallet
-        </button>
+        <>
+          <button type="button" className="x-btn x-btn--primary x-btn--lg x-btn--block" onClick={() => void connect().catch(() => undefined)}>
+            Connect your campaign wallet
+          </button>
+          {connectError ? (
+            <p className="x-escrow__err" role="alert">
+              {connectError}
+            </p>
+          ) : null}
+        </>
       ) : !ready ? (
         <button type="button" className="x-btn x-btn--primary x-btn--lg x-btn--block" onClick={() => void switchChain().catch(() => undefined)}>
           Switch to BNB Smart Chain

@@ -52,7 +52,7 @@ const short = (tx: string) => `${tx.slice(0, 8)}…${tx.slice(-4)}`;
  * a hire is confirmed a few seconds after it is answered.
  */
 export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard[]; campaign: Campaign; pack?: PackAgent[] | null }) {
-  const { address, available, connect } = useWallet();
+  const { address, available, connect, connectError } = useWallet();
   const [p, setP] = useState<Progress | null>(null);
 
   const read = useCallback(async () => {
@@ -115,9 +115,16 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
           <>
             <p className="x-quest__count">Connect your campaign wallet to see your progress.</p>
             {available ? (
-              <button type="button" className="x-btn x-btn--primary" onClick={connect}>
-                Connect wallet
-              </button>
+              <>
+                <button type="button" className="x-btn x-btn--primary" onClick={() => void connect().catch(() => undefined)}>
+                  Connect wallet
+                </button>
+                {connectError ? (
+                  <p className="x-escrow__err" role="alert">
+                    {connectError}
+                  </p>
+                ) : null}
+              </>
             ) : (
               <div className="x-quest__note">
                 <OpenInWallet />
