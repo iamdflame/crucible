@@ -65,7 +65,7 @@ async function main() {
     if (spent > plan.maxIn) throw new Error("the swap took more BNB than its cap");
   }
   const held = await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "balanceOf", args: [me] });
-  if (held < budget) throw new Error("the test wallet needs at least 0.05 $U: run npm run fund-test-wallet first, or pass --pay-bnb");
+  if (held < budget) throw new Error(`the test wallet needs at least ${Number(budget) / 1e18} $U: run npm run fund-test-wallet first, or pass --pay-bnb`);
 
   const send = async (label: string, request: Parameters<typeof wallet.writeContract>[0]) => {
     /*

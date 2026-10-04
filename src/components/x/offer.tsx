@@ -101,7 +101,7 @@ export function offerFor(l: Listing): HireOffer {
     // Our own agents take escrowed jobs from their own wallets; outside sellers, at the price they quoted.
     escrow: (() => {
       const p = escrowRail && slug ? providerFor(slug) : null;
-      if (p) return { provider: p.owner, budget: HOUSE_BUDGET.toString(), tokenId: l.tokenId, name: l.name, outside: null };
+      if (p) return { provider: p.owner, budget: HOUSE_BUDGET.toString(), tokenId: l.tokenId, name: l.name, outside: null, tryable: true };
       return outsideEscrow
         ? {
             provider: outsideEscrow.provider,

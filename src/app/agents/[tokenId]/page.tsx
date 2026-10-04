@@ -148,8 +148,9 @@ export default async function AgentPage({ params }: { params: Promise<{ tokenId:
   const perCall = verdict.rails.find((r) => r.kind === "x402");
   const jobRail = verdict.rails.some((r) => r.kind === "mandate");
   const sponsor = verdict.ok ? SPONSORED[l.tokenId] : undefined;
-  // An outside seller on BNB's SDK that answers its task free, before a job is paid for.
-  const freeAnswer = !sponsor && tryFreeKind(l, verdict) === "sdk";
+  // It answers its task free before a job is paid for: one of ours, or an outside seller on BNB's SDK.
+  const freeKind = tryFreeKind(l, verdict);
+  const freeAnswer = !sponsor && (freeKind === "sdk" || freeKind === "house");
   const rail = verdict.rails.map((r) => RAIL[r.kind]).find(Boolean) ?? (l.quote || l.declaresPayment ? "x402" : null);
   const cat = l.category ? CATEGORY_LABEL[l.category] : null;
   const slug = slugOf;

@@ -145,7 +145,7 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
   }, [open, offer.tokenId]);
 
   // The address decides: #call opens the flow, #sponsored the free call we pay for, #try the agent's own free answer.
-  const tryable = Boolean(offer.escrow?.outside?.tryable);
+  const tryable = Boolean(offer.escrow?.outside?.tryable || offer.escrow?.tryable);
   useEffect(() => {
     const read = () => {
       const h = window.location.hash;
@@ -379,7 +379,7 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
           </fieldset>
         ) : null}
 
-        {offer.escrow?.outside?.tryable && viaEscrow ? (
+        {tryable && viaEscrow ? (
           <div className="x-hire__try">
             <div className="x-hire__try-row">
               <button type="button" className="x-btn x-btn--sm" onClick={() => void tryIt()} disabled={trying || !inputsReady}>

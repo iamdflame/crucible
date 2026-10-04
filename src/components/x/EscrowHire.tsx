@@ -34,6 +34,8 @@ export interface EscrowOffer {
   name: string;
   /** Set for an outside seller that quoted over A2A; null for our own agents. */
   outside: null | { service: string | null; serviceName: string | null; etaSeconds: number | null; /** Answers its task free before a job is paid for (BNB's standard, and our last check got an answer). */ tryable?: boolean };
+  /** One of ours: it answers a free try with the same service a paid job runs (/api/try). */
+  tryable?: boolean;
 }
 
 /** Gas for all five steps with room to spare: they used 0.0000376 BNB at 0.05 gwei on job 56802. */

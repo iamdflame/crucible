@@ -55,8 +55,15 @@ export const JOB_CREATED = parseAbiItem(
   "event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)",
 );
 
-/** What a buyer pays for a job from one of our agents: the same five cents its paid call costs, in $U. */
-export const HOUSE_BUDGET = 50_000_000_000_000_000n;
+/**
+ * What a buyer pays for a job from one of our agents, in $U: one cent while
+ * BNB Chain's Set and Earn runs (to 5 Nov 2026), set on 3 Oct when every
+ * outside hire in the campaign was paying 0.03 $U or less. It was five cents,
+ * the price of its paid call, which stays 0.05 USD1. The A2A seller's signed
+ * quote, the hire law, the drawer and the recording check all read this one
+ * figure, so they move together.
+ */
+export const HOUSE_BUDGET = 10_000_000_000_000_000n;
 
 /** How long our agent has to deliver before the buyer can take the budget back. */
 export const DELIVERY_SECONDS = 1_800;

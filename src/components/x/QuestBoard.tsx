@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import HireDrawer, { type HireOffer } from "@/components/x/HireDrawer";
 import OpenInWallet from "@/components/x/OpenInWallet";
 import NeedHelp from "@/components/x/NeedHelp";
+import HirePack, { type PackAgent } from "@/components/x/HirePack";
 import { useWallet } from "@/lib/chain/wallet";
 
 export interface QuestCard {
@@ -50,7 +51,7 @@ const short = (tx: string) => `${tx.slice(0, 8)}…${tx.slice(-4)}`;
  * here, and its own agents listed here. Re-read while the page is open, since
  * a hire is confirmed a few seconds after it is answered.
  */
-export default function QuestBoard({ cards, campaign }: { cards: QuestCard[]; campaign: Campaign }) {
+export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard[]; campaign: Campaign; pack?: PackAgent[] | null }) {
   const { address, available, connect } = useWallet();
   const [p, setP] = useState<Progress | null>(null);
 
@@ -91,6 +92,9 @@ export default function QuestBoard({ cards, campaign }: { cards: QuestCard[]; ca
 
   return (
     <div className="x-quest">
+      {/* First on the screen, because most people arrive here to hire: two of the three, in one confirmation. */}
+      {pack && pack.length >= 2 ? <HirePack agents={pack} /> : null}
+
       <div className="x-quest__bar" role="status">
         {address && p ? (
           <>

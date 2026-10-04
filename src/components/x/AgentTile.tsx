@@ -48,7 +48,7 @@ export default function AgentTile({ l, forPosition }: { l: Listing; forPosition?
   const price = priceParts(l, lead);
   // Try it before paying: we pay for a call to it, or it answers its task free (BNB's SDK).
   const free = tryFreeKind(l, verdict);
-  const tryHref = free === "sponsored" ? `/agents/${l.tokenId}#sponsored` : free === "sdk" ? `/agents/${l.tokenId}#try` : null;
+  const tryHref = free === "sponsored" ? `/agents/${l.tokenId}#sponsored` : free ? `/agents/${l.tokenId}#try` : null;
   const detail = `/agents/${l.tokenId}${forPosition ? `?about=${encodeURIComponent(forPosition)}` : ""}`;
   // An answer we checked against the chain ourselves outranks any other proof.
   const proof = l.checked?.verdict === "pass" ? "Passed MANDATE checks" : (trust.badges[0] ?? null);

@@ -8,6 +8,11 @@
  * this asks it on the buyer's behalf (browsers cannot call most agents'
  * servers directly) and hands back what it said. Nothing is paid or signed.
  * An agent that only answers paid jobs is said to, rather than shown an error.
+ *
+ * Our own four agents answer free here too: the same service a paid job runs,
+ * about the wallet the buyer names, or the demo account when they name none.
+ * A free try is for seeing the work before paying; it is not a hire and never
+ * counts toward Set and Earn.
  */
 
 import { NextResponse } from "next/server";
@@ -21,6 +26,9 @@ import { tryFree } from "@/lib/escrow/a2a";
 import { taskFor } from "@/lib/escrow/task";
 import { poolNow } from "@/lib/house/services";
 import { errorOnly } from "@/lib/conformance/run";
+import { HOUSE_SERVICES } from "@/lib/house/services";
+import { houseSlug } from "@/lib/market/performance";
+import { DEMO_ADDRESS } from "@/lib/demo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +56,20 @@ export async function POST(request: Request) {
       .filter((e): e is [string, string] => /^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(e[0]) && typeof e[1] === "string")
       .map(([k, v]) => [k, v.slice(0, 240)]),
   );
+  // One of ours: its own service, exactly as a paid job would run it.
+  const slug = houseSlug(tokenId);
+  const service = slug ? HOUSE_SERVICES[slug] : undefined;
+  if (service) {
+    const named = inputs.position && /^\d{1,10}$/.test(inputs.position) ? { position: inputs.position } : null;
+    const wallet = inputs.wallet && /^0x[0-9a-fA-F]{40}$/.test(inputs.wallet) ? inputs.wallet : null;
+    const input = named ?? { wallet: wallet ?? DEMO_ADDRESS };
+    const refused = service.validate(input);
+    if (refused) return fail(400, refused, CHAIN_ID, g.headers);
+    const task = `${service.name} for ${named ? `position ${named.position}` : wallet ? wallet : `the demo account ${DEMO_ADDRESS}, since no wallet was named`}`;
+    const answer = await service.run(input).catch((e: Error) => ({ tryError: e.message }));
+    if (answer && typeof answer === "object" && "tryError" in answer) return fail(502, `It could not answer just now: ${String(answer.tryError).slice(0, 120)}`, CHAIN_ID, g.headers);
+    return ok({ free: true, task, answer }, { chainId: CHAIN_ID }, g.headers);
+  }
   await warm(["probe"]);
   const q = getProbes().escrowQuotes?.[tokenId];
   if (!q || q.kind !== "sdk") return fail(404, "This agent has no free call to try.", CHAIN_ID, g.headers);

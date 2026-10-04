@@ -195,13 +195,15 @@ export const PRED = {
 
 /**
  * Whether a buyer can try it before paying, and how: we pay for a call to it
- * (sponsored), or it is an outside seller on BNB's SDK whose free answer our
- * last check could read. The drawer offers exactly these (components/x/offer).
+ * (sponsored), it is one of ours (its own service answers free), or it is an
+ * outside seller on BNB's SDK whose free answer our last check could read.
+ * The drawer offers exactly these (components/x/offer).
  */
-export function tryFreeKind(l: Listing, v: HireVerdict = hirePath(l)): "sponsored" | "sdk" | null {
+export function tryFreeKind(l: Listing, v: HireVerdict = hirePath(l)): "sponsored" | "house" | "sdk" | null {
   if (!v.ok) return null;
   if (SPONSORED[l.tokenId]) return "sponsored";
   const escrow = v.rails.some((r) => r.kind === "escrow");
+  if (escrow && houseSlug(l.tokenId)) return "house";
   if (escrow && !houseSlug(l.tokenId) && l.escrowQuote?.kind === "sdk" && l.checked?.verdict !== "unreadable") return "sdk";
   return null;
 }

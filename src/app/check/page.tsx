@@ -8,6 +8,10 @@ import CheckMine from "@/components/x/CheckMine";
 import { live } from "@/lib/data/live";
 import { findAgent, getAgentIndex, type IndexedAgent } from "@/lib/data/agents";
 import { readCheckInput } from "@/lib/campaign/check-input";
+import ShareLink from "@/components/x/ShareLink";
+import { listingFor } from "@/lib/market/listing";
+import { hirePath, primaryRail } from "@/lib/market/hire-law";
+import { SITE } from "@/lib/site";
 import { agentsOf } from "@/lib/market/tracking";
 import { QUALIFIES } from "@/lib/campaign/rules";
 import { CATEGORY_LABEL, type Category } from "@/lib/config";
@@ -27,6 +31,25 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/*
+  What to change so people can hire an agent here, by the hire law's reason.
+  A builder needs three hires from wallets that are not theirs; the people who
+  use their agent can only hire it where it can be paid.
+*/
+const FIX: Record<string, string> = {
+  "Did not answer our last call": "Make sure the endpoint in its registration answers over A2A, MCP or x402. We call every agent again on our next pass.",
+  "No price we can pay yet":
+    "Publish a price we can pay: answer BNB's negotiate-erc8183-job skill with a quote it signs (BNB's agent SDK does this), or answer x402 with a price in USD1 or USDT on BNB Smart Chain.",
+  "Publishes nothing to call": "Add its A2A agent card or MCP server URL to its registration.",
+  "No agent protocol": "Its endpoint answers, but not in A2A, MCP or x402, so there is nothing a buyer's wallet can pay.",
+  "Not checked yet": "We call new registrations on our next pass; check back in a little while.",
+  "Endpoint we will not call": "Use an https URL on a public address.",
+  "Tools do not fit its job": "The tools its server lists do not fit the job its card states: make the card and the server say the same job.",
+  "Took payment, returned an error": "Its last paid call failed. It comes back once it delivers a paid call.",
+  "Refused a correct payment": "It refused a correctly signed payment. It comes back once it delivers a paid call.",
+  "Missed an escrowed job": "Its last escrowed job passed its deadline undelivered. It comes back once it delivers one.",
+};
 
 /** Our own Range-1: a real agent with real gaps, so a first look shows what a "not yet" says. */
 const EXAMPLE = "344119";
@@ -179,6 +202,7 @@ export default async function CheckPage({ searchParams }: { searchParams: Promis
             </Link>
           </p>
           <QualifyPanel tokenId={id} />
+          <HireHere id={id} />
         </section>
       ) : null}
 
@@ -208,5 +232,46 @@ export default async function CheckPage({ searchParams }: { searchParams: Promis
         <NeedHelp />
       </section>
     </AppShell>
+  );
+}
+
+/**
+ * Whether people can hire this agent here, and if not, what to change. A
+ * builder's agent needs hires from wallets that are not theirs; the people
+ * who use it can only hire it where it can be paid, so this says so plainly
+ * and hands over the link. It never suggests where the hires should come from.
+ */
+function HireHere({ id }: { id: string }) {
+  const l = listingFor(id);
+  const v = l ? hirePath(l) : null;
+  const lead = v ? primaryRail(v) : null;
+  return (
+    <div className="x-hirehere">
+      <h2 className="x-proof-h">Can people hire it on MANDATE?</h2>
+      {!l ? (
+        <p className="x-ad-src">
+          Not under a job yet. Its card has to say which job it does (yield, grid trading, rebalancing or health factor) in its own description; we file it from
+          those words when we read its registration.
+        </p>
+      ) : v?.ok ? (
+        <>
+          <p>
+            Yes{lead && "price" in lead ? `, for ${lead.price}` : ""}. Anyone can hire it here, paying into BNB Chain&apos;s escrow, and every hire is read from
+            the chain. This is its page to share with the people who use it:
+          </p>
+          <ShareLink url={`${SITE}/agents/${id}`} />
+          <p className="x-ad-src">
+            For Set and Earn, only hires from wallets that are not yours and not funded by yours count, and BNB Chain excludes wash activity.
+          </p>
+        </>
+      ) : (
+        <>
+          <p>
+            <strong>Not yet.</strong> {v?.reason}
+          </p>
+          {v?.short && FIX[v.short] ? <p className="x-ad-src">{FIX[v.short]}</p> : null}
+        </>
+      )}
+    </div>
   );
 }

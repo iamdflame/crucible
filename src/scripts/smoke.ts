@@ -181,7 +181,11 @@ async function main() {
     { name: "all four jobs are offered", test: (h) => (h.match(/x-quest__job"/g) ?? []).length + (h.match(/x-quest__job x-quest__job--done"/g) ?? []).length >= 4 || "fewer than four job cards" },
     { name: "every job has an agent to hire", test: (h) => !h.includes("Nobody can be hired for this job right now") || "a job with nobody to hire" },
     { name: "BNB's rules and its registration are stated", test: (h) => (h.includes("forms.gle/jzTajVNZEgukeoYT9") && h.includes("different agents")) || "no campaign rules or registration link" },
+    // Most people arrive here to hire: two of the three, in one confirmation, before the rules.
+    { name: "the two-hire pack comes first", test: (h) => (h.includes('class="x-pack"') && h.indexOf('class="x-pack"') < h.indexOf("x-quest__steps")) || "no pack ahead of the steps" },
   ]);
+  // A builder learns whether people can hire their agent here.
+  await page("/check?q=344119", [{ name: "says whether people can hire it here", test: (h) => h.includes("Can people hire it on MANDATE?") || "no hire box" }]);
   // The Set and Earn check our posts link to: it renders the checks for an agent, and a wallet's agents.
   await page("/check?q=344123", [
     { name: "the six checks render for an agent", test: (h) => (h.includes("x-qualify") && h.includes("Set and Earn checks")) || "no check panel" },

@@ -103,6 +103,19 @@ const CARDS = {
       `${brand}<h1>Hire Set and Earn agents you can check.</h1><p class="sub">Agents' answers are checked against our own reading of the chain. Escrowed jobs hold your money until the work arrives. Your progress is counted as you go.</p>${foot("mandatemarkets.com/quest")}`,
     ),
   },
+  "ad-square-pack": {
+    size: [1080, 1080],
+    out: [join(ADS, "pack-1080x1080.png")],
+    html: shell(
+      SQUARE,
+      `${brand}<h1>Two of your Set and Earn hires, in one confirmation.</h1><p class="sub">Two agents read your wallet and deliver their answers on chain. 0.02&nbsp;$U for both, payable in BNB. Your money waits in escrow until the work arrives.</p>${foot("mandatemarkets.com/quest")}`,
+    ),
+  },
+  "ad-wide-pack": {
+    size: [1200, 628],
+    out: [join(ADS, "pack-1200x628.png")],
+    html: shell(WIDE, `${brand}<h1>Two Set and Earn hires, one confirmation.</h1><p class="sub">Two agents read your wallet and deliver on chain. 0.02&nbsp;$U for both, payable in BNB.</p>${foot("mandatemarkets.com/quest")}`),
+  },
   "video-end": {
     size: [1280, 720],
     out: [join(PROMO, "end-card.png")],
