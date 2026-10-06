@@ -7,7 +7,7 @@
  * text, so the job states on chain where it was opened.
  */
 
-import { VIA } from "./contracts";
+import { VIA, VIA_HOST } from "./contracts";
 import { WBNB } from "@/lib/chain/valuation/prices";
 import { sanitize } from "./sdk";
 
@@ -57,4 +57,21 @@ export function gridTask(inputs: Record<string, string>, bnbUsd: number | null):
   const stop = round(lower * 0.95);
   // Worded the way grid agents on this registry parse it (tried against Lattice, 27 Sep): "between A and B".
   return `Grid plan for ${pair} between ${lower} and ${upper} USDT, stop ${stop}, capital ${capital} USD, ${levels} levels`;
+}
+
+/**
+ * A seller's own task form, marked as opened here. A JSON object task gets a
+ * "via" field (ChainHelix prices it the same, tried 6 Oct); any other text
+ * gets ", via mandatemarkets.com". Without the mark our record refuses the
+ * job as not opened here, and the hire is not counted to its buyer (job 56909).
+ */
+export function attributed(task: string): string {
+  if (task.includes(VIA_HOST)) return task;
+  try {
+    const o = JSON.parse(task) as unknown;
+    if (o && typeof o === "object" && !Array.isArray(o)) return JSON.stringify({ ...(o as Record<string, unknown>), via: VIA_HOST });
+  } catch {
+    /* plain text */
+  }
+  return sanitize(`${task}, ${VIA}`);
 }

@@ -265,15 +265,17 @@ export async function tryFree(a2a: string, task: string): Promise<unknown> {
  */
 export async function quoteWith(
   seller: { url: string; notify: boolean; skill: string; examples: string[] },
-  forms: { structured: string; plain: string },
+  forms: { structured: string; plain: string; mark: (task: string) => string },
   opts: { signers: string[] },
 ): Promise<EscrowQuote> {
-  const asks = [...new Set([seller.examples[0], forms.structured, forms.plain].filter((x): x is string => Boolean(x && x.trim())))];
+  const example = seller.examples[0] ? forms.mark(seller.examples[0]) : undefined;
+  const asks = [...new Set([example, forms.structured, forms.plain].filter((x): x is string => Boolean(x && x.trim())))];
   let reason = "";
   for (const ask of asks) {
     try {
       const q = await negotiate(seller.url, ask, { signers: opts.signers, notify: seller.notify, skill: seller.skill });
-      return { ...q, ...(seller.skill !== "negotiate" ? { skill: seller.skill } : {}), task: ask === seller.examples[0] ? ask : null, declined: null, askedAt: new Date().toISOString() };
+      // The card's own example, kept unmarked: a hire marks it again on the way out.
+      return { ...q, ...(seller.skill !== "negotiate" ? { skill: seller.skill } : {}), task: ask === example ? seller.examples[0]! : null, declined: null, askedAt: new Date().toISOString() };
     } catch (e) {
       if (!(e instanceof Declined)) throw e;
       reason = e.message;

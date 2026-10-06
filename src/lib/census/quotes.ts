@@ -17,7 +17,7 @@ import { escrowQuoteMap } from "@/lib/data/probes";
 import { snapshot, store, warm } from "@/lib/data/snapshots";
 import { readRegistryEntry } from "@/lib/sources/registry";
 import { escrowSeller, quoteWith, type EscrowQuote } from "@/lib/escrow/a2a";
-import { taskFor } from "@/lib/escrow/task";
+import { attributed, taskFor } from "@/lib/escrow/task";
 import { DEMO_ADDRESS } from "@/lib/demo";
 import { warmRegistry } from "@/lib/registry/tail";
 import { withTimeout } from "@/lib/cache";
@@ -60,7 +60,7 @@ export async function refreshEscrowQuotes(opts: { budgetMs: number }): Promise<s
         const structured = taskFor(a.category ?? null, a.name ?? `Agent ${a.tokenId}`, { wallet: DEMO_ADDRESS });
         asked += 1;
         const q = await withTimeout(
-          quoteWith(seller, { structured, plain: a.name ?? `Agent ${a.tokenId}` }, { signers }).catch(() => null),
+          quoteWith(seller, { structured, plain: a.name ?? `Agent ${a.tokenId}`, mark: attributed }, { signers }).catch(() => null),
           30_000,
         );
         if (!q) {

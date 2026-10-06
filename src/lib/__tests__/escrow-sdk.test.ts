@@ -62,3 +62,13 @@ describe("the task an outside agent is asked", () => {
     expect(taskFor("grid-trading", "Lattice", {}, { bnbUsd: 776 })).toMatch(/^Grid plan .* via mandatemarkets\.com$/);
   });
 });
+
+describe("a seller's own task form, marked as opened here", () => {
+  it("adds a via field to a JSON task, and the plain mark to any other text, once", async () => {
+    const { attributed } = await import("../escrow/task");
+    expect(JSON.parse(attributed('{"holdings":{"BTC":1},"driftThresholdPct":1}'))).toEqual({ holdings: { BTC: 1 }, driftThresholdPct: 1, via: "mandatemarkets.com" });
+    expect(attributed("Rank the yield venues for 0xabc")).toMatch(/^Rank the yield venues for 0xabc, via mandatemarkets\.com/);
+    const once = attributed('{"a":1}');
+    expect(attributed(once)).toBe(once);
+  });
+});

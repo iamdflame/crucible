@@ -23,7 +23,7 @@ import { readRegistryEntry } from "@/lib/sources/registry";
 import { negotiateFull } from "@/lib/escrow/a2a";
 import { jobDescription } from "@/lib/escrow/sdk";
 import { outsideDescription } from "@/lib/escrow/contracts";
-import { taskFor } from "@/lib/escrow/task";
+import { attributed, taskFor } from "@/lib/escrow/task";
 import { poolNow } from "@/lib/house/services";
 
 export const runtime = "nodejs";
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   // A grid's blank bounds are set around the price now, so the agent gets a band it can plan inside.
   const bnbUsd = agent?.category === "grid-trading" ? await poolNow().then((p) => p.usdtPerBnb, () => null) : null;
   // A seller priced on its card's own example reads only that form: the buyer's edit of it, or the example itself.
-  const task = known.task ? inputs.task?.trim() || known.task : taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
+  const task = known.task ? attributed(inputs.task?.trim() || known.task) : taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
 
   const live = await negotiateFull(known.a2a, task, { signers, notify: known.notify, skill: known.skill }).catch((e: Error) => ({ error: e.message }));
   if ("error" in live) return fail(502, `The agent's seller did not quote just now: ${live.error.slice(0, 120)}`, CHAIN_ID, g.headers);

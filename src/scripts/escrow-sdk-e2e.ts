@@ -2,6 +2,8 @@
  * BNB's standard hire, end to end on mainnet, from the test wallet.
  *
  *   npm run escrow-sdk-e2e -- --agent 341554 --task "WBNB/USDT, 1000 USD capital, 10 levels across 10%"
+ *   npm run escrow-sdk-e2e -- --agent 269223 --pay-bnb   a seller that reads only its card's example
+ *                                                       task, the wallet's shortfall bought with BNB
  *
  * The agent (one built on BNB's agent SDK) signs a quote over A2A; the quote
  * is checked against the wallets its ERC-8004 registration names; the job is
@@ -17,7 +19,8 @@ import { COMMERCE_ABI, DELIVERY_SECONDS, ESCROW, POLICY_ABI, ROUTER_ABI, TOKEN_A
 import { deliver, jobRow, readJob, recordFunded } from "@/lib/escrow/jobs";
 import { escrowSeller, negotiateFull, notifyFunded } from "@/lib/escrow/a2a";
 import { jobDescription } from "@/lib/escrow/sdk";
-import { taskFor } from "@/lib/escrow/task";
+import { attributed, taskFor } from "@/lib/escrow/task";
+import { planSwap } from "@/lib/escrow/pay-with-bnb";
 import { readRegistryEntry } from "@/lib/sources/registry";
 import { findAgent } from "@/lib/data/agents";
 import { poolNow } from "@/lib/house/services";
@@ -43,15 +46,36 @@ async function main() {
   const signers = [entry.owner, typeof entry.card?.agentWallet === "string" ? entry.card.agentWallet : null].filter((w): w is string => Boolean(w));
   const agent = findAgent(tokenId);
   const bnbUsd = agent?.category === "grid-trading" ? await poolNow().then((p) => p.usdtPerBnb, () => null) : null;
-  const task = taskFor(agent?.category ?? null, agent?.name ?? entry.name ?? tokenId, inputs, { bnbUsd });
+  // A seller whose card gives an example task reads only that form, as the drawer now sends it.
+  const task = seller.examples[0] && !arg("task") ? attributed(seller.examples[0]) : taskFor(agent?.category ?? null, agent?.name ?? entry.name ?? tokenId, inputs, { bnbUsd });
   const { quote, sdk } = await negotiateFull(seller.url, task, { signers, notify: seller.notify, skill: seller.skill });
   if (!sdk) throw new Error("the agent answered with a plain quote, not BNB's signed form");
   if (quote.unpayable) throw new Error(`quote refused: ${quote.unpayable}`);
   const budget = BigInt(quote.price);
   console.log(`${entry.name}: signed quote ${Number(budget) / 1e18} $U from ${quote.provider} (owner ${entry.owner}); task "${task}"`);
 
+  if (process.argv.includes("--pay-bnb")) {
+    const held = await marketClient.readContract({ address: ESCROW.paymentToken, abi: TOKEN_ABI, functionName: "balanceOf", args: [me] });
+    if (held < budget) {
+      const plan = await planSwap(marketClient, me, budget - held);
+      const hash = await wallet.sendTransaction({ to: plan.call.to, data: plan.call.data, value: plan.call.value } as never);
+      const r = await marketClient.waitForTransactionReceipt({ hash });
+      console.log(`  swap BNB for the ${Number(budget - held) / 1e18} $U short: ${r.status} https://bscscan.com/tx/${hash}`);
+      if (r.status !== "success") throw new Error("the swap reverted");
+    }
+  }
+
   const send = async (label: string, request: Parameters<typeof wallet.writeContract>[0]) => {
-    const hash = await wallet.writeContract(request);
+    // A step that reverts in estimation on a node a block behind is tried again on the next blocks.
+    let hash: `0x${string}` | null = null;
+    for (let attempt = 0; hash === null; attempt++) {
+      try {
+        hash = await wallet.writeContract(request);
+      } catch (e) {
+        if (attempt >= 3 || !/revert/i.test((e as Error).message)) throw e;
+        await new Promise((ok) => setTimeout(ok, 4_000));
+      }
+    }
     const r = await marketClient.waitForTransactionReceipt({ hash });
     console.log(`  ${label}: ${r.status} https://bscscan.com/tx/${hash}`);
     if (r.status !== "success") throw new Error(`${label} reverted`);
