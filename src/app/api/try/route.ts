@@ -20,7 +20,7 @@ import { CHAIN_ID } from "@/lib/config";
 import { fail, gate, ok } from "@/lib/api/respond";
 import { CORS } from "@/lib/api/ratelimit";
 import { warm } from "@/lib/data/snapshots";
-import { getProbes } from "@/lib/data/probes";
+import { escrowQuoteMap, getProbes } from "@/lib/data/probes";
 import { findAgent } from "@/lib/data/agents";
 import { tryFree } from "@/lib/escrow/a2a";
 import { taskFor } from "@/lib/escrow/task";
@@ -54,7 +54,8 @@ export async function POST(request: Request) {
   const inputs = Object.fromEntries(
     Object.entries(body.inputs && typeof body.inputs === "object" ? (body.inputs as Record<string, unknown>) : {})
       .filter((e): e is [string, string] => /^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(e[0]) && typeof e[1] === "string")
-      .map(([k, v]) => [k, v.slice(0, 240)]),
+      // A structured task (an agent card's example form) can be longer than a field.
+      .map(([k, v]) => [k, v.slice(0, k === "task" ? 2_000 : 240)]),
   );
   // One of ours: its own service, exactly as a paid job would run it.
   const slug = houseSlug(tokenId);
@@ -70,12 +71,12 @@ export async function POST(request: Request) {
     if (answer && typeof answer === "object" && "tryError" in answer) return fail(502, `It could not answer just now: ${String(answer.tryError).slice(0, 120)}`, CHAIN_ID, g.headers);
     return ok({ free: true, task, answer }, { chainId: CHAIN_ID }, g.headers);
   }
-  await warm(["probe"]);
-  const q = getProbes().escrowQuotes?.[tokenId];
+  await warm(["probe", "escrow-quotes"]);
+  const q = escrowQuoteMap()[tokenId];
   if (!q || q.kind !== "sdk") return fail(404, "This agent has no free call to try.", CHAIN_ID, g.headers);
   const agent = findAgent(tokenId);
   const bnbUsd = agent?.category === "grid-trading" ? await poolNow().then((p) => p.usdtPerBnb, () => null) : null;
-  const task = taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
+  const task = q.task ? inputs.task?.trim() || q.task : taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
   const answer = await tryFree(q.a2a, task).catch((e: Error) => ({ tryError: e.message }));
   if (answer && typeof answer === "object" && "tryError" in answer) return fail(502, `The agent did not answer just now: ${String(answer.tryError).slice(0, 120)}`, CHAIN_ID, g.headers);
   const refused = errorOnly(answer);

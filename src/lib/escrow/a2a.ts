@@ -48,7 +48,19 @@ export interface EscrowQuote {
   notify?: boolean;
   /** The negotiation skill id its card lists, when not plain "negotiate". */
   skill?: string;
+  /**
+   * The task that earned this quote, when it was the card's own example
+   * rather than our wording: a hire sends a task in that same form.
+   */
+  task?: string | null;
+  /** Why the seller turned down every sample task we could form, when it did. */
+  declined?: string | null;
+  /** When we last asked it. */
+  askedAt?: string;
 }
+
+/** A seller's answer that turned the task down, with its reason, as distinct from a broken answer. */
+export class Declined extends Error {}
 
 /** What we ask for in a quote's quality terms; an SDK agent refuses a request without any. */
 const QUALITY = "Figures read from BNB Smart Chain at delivery, internally consistent, with their sources stated.";
@@ -68,8 +80,16 @@ async function rpc(url: string, data: Record<string, unknown>): Promise<unknown>
     }),
     timeoutMs: TIMEOUT,
   });
+  let j: { result?: unknown; error?: { code?: number; message?: string } } | null = null;
+  try {
+    j = JSON.parse(res.text);
+  } catch {
+    j = null;
+  }
+  // "Invalid params" names what the task lacked: the seller turning our wording down, not a broken seller.
+  if (j?.error?.code === -32602) throw new Declined((j.error.message ?? "it rejected the task's parameters").slice(0, 240));
   if (res.status >= 400) throw new Error(`it answered ${res.status}`);
-  const j = JSON.parse(res.text) as { result?: unknown; error?: { message?: string } };
+  if (!j) throw new Error("its answer was not JSON");
   if (j.error) throw new Error(j.error.message ?? "it answered with an error");
   return j.result;
 }
@@ -90,7 +110,7 @@ export function findData(v: unknown, has: (o: Record<string, unknown>) => boolea
 }
 
 /** The seller's A2A endpoint, from its agent card, when the card says it sells through escrow, and whether it wants telling. */
-export async function escrowSeller(services: { name?: string; endpoint?: string }[]): Promise<{ url: string; notify: boolean; skill: string } | null> {
+export async function escrowSeller(services: { name?: string; endpoint?: string }[]): Promise<{ url: string; notify: boolean; skill: string; examples: string[] } | null> {
   const a2a = services.find((s) => /^a2a$/i.test(s.name ?? "") && /^https:/i.test(s.endpoint ?? ""))?.endpoint;
   if (!a2a) return null;
   const listed = services.find((s) => /agent.?card/i.test(s.name ?? "") && /^https:/i.test(s.endpoint ?? ""))?.endpoint;
@@ -103,7 +123,7 @@ export async function escrowSeller(services: { name?: string; endpoint?: string 
   for (const url of tries) {
     const res = await safeFetch(url, { timeoutMs: TIMEOUT, headers: { accept: "application/json" } }).catch(() => null);
     if (!res || res.status !== 200) continue;
-    let card: { url?: string; skills?: { id?: string }[]; supportedInterfaces?: { url?: string }[] };
+    let card: { url?: string; skills?: { id?: string; examples?: unknown }[]; supportedInterfaces?: { url?: string }[] };
     try {
       card = JSON.parse(res.text);
     } catch {
@@ -120,7 +140,18 @@ export async function escrowSeller(services: { name?: string; endpoint?: string 
     // The card names its own endpoint; it must be https, and the one the registration lists wins a tie.
     const named = [card.url, ...(card.supportedInterfaces ?? []).map((i) => i.url)].find((u) => typeof u === "string" && /^https:/i.test(u));
     const endpoint = named ?? (isCard ? null : a2a);
-    return endpoint ? { url: endpoint, notify: skills.has("notify_funded"), skill } : null;
+    /*
+      The card's own task examples, from its work skills (not the protocol
+      ones). Several sellers read only a structured task, and say so: "send
+      task_description as the flat JSON object in the agent card's work skill
+      example" (ChainHelix, 6 Oct). A plain-English ask got no price from them.
+    */
+    const protocolSkill = /negotiat|notify|status|erc.?8183/i;
+    const examples = (card.skills ?? [])
+      .filter((s) => !protocolSkill.test(String(s.id ?? "")))
+      .flatMap((s) => (Array.isArray(s.examples) ? s.examples : []))
+      .filter((x): x is string => typeof x === "string" && x.trim().length > 0 && x.length <= 2_000);
+    return endpoint ? { url: endpoint, notify: skills.has("notify_funded"), skill, examples } : null;
   }
   // Cards were read and none sells escrowed jobs: a finding. No card could be read: our failure, not a finding.
   if (read) return null;
@@ -141,7 +172,15 @@ export async function negotiate(a2a: string, ask: string, opts: { signers: strin
 export async function negotiateFull(a2a: string, ask: string, opts: { signers: string[]; notify?: boolean; skill?: string }): Promise<{ quote: EscrowQuote; sdk: SdkQuote | null }> {
   const result = await rpc(a2a, { skill: opts.skill ?? "negotiate", task_description: ask, description: ask, terms: { deliverables: ask, quality_standards: QUALITY } });
   const sdk = findData(result, (o) => isSdkQuote(o) && ("negotiation_hash" in o || (o.response as { accepted?: boolean })?.accepted === false)) as SdkQuote | null;
-  if (!sdk) return { quote: { ...quoteFrom(result, a2a), kind: "simple", notify: opts.notify ?? true }, sdk: null };
+  if (!sdk) {
+    // A plain "no" is not a broken answer: it says why, and the next form of the task may be accepted.
+    const no = findData(result, (o) => o.accepted === false || (o.response as { accepted?: boolean } | undefined)?.accepted === false);
+    if (no) {
+      const r = (no.response as { reason?: unknown; reason_code?: unknown } | undefined) ?? {};
+      throw new Declined(String(no.reason ?? r.reason ?? r.reason_code ?? no.reason_code ?? "it declined the task").slice(0, 240));
+    }
+    return { quote: { ...quoteFrom(result, a2a), kind: "simple", notify: opts.notify ?? true }, sdk: null };
+  }
   const checked = await checkSdkQuote(sdk, { chainId: 56, commerce: ESCROW.commerce, token: ESCROW.paymentToken, signers: opts.signers });
   const at = new Date().toISOString();
   if ("refused" in checked) {
@@ -218,3 +257,44 @@ export async function tryFree(a2a: string, task: string): Promise<unknown> {
   return p.kind === "data" ? p.data : p.text;
 }
 
+/**
+ * A price for the census: the task in the forms a seller may accept, in turn.
+ * Its card's own example first, then our structured task for the job, then
+ * its name. A seller that turns all of them down is recorded as having done
+ * so, with its reason, rather than as having no price.
+ */
+export async function quoteWith(
+  seller: { url: string; notify: boolean; skill: string; examples: string[] },
+  forms: { structured: string; plain: string },
+  opts: { signers: string[] },
+): Promise<EscrowQuote> {
+  const asks = [...new Set([seller.examples[0], forms.structured, forms.plain].filter((x): x is string => Boolean(x && x.trim())))];
+  let reason = "";
+  for (const ask of asks) {
+    try {
+      const q = await negotiate(seller.url, ask, { signers: opts.signers, notify: seller.notify, skill: seller.skill });
+      return { ...q, ...(seller.skill !== "negotiate" ? { skill: seller.skill } : {}), task: ask === seller.examples[0] ? ask : null, declined: null, askedAt: new Date().toISOString() };
+    } catch (e) {
+      if (!(e instanceof Declined)) throw e;
+      reason = e.message;
+    }
+  }
+  const at = new Date().toISOString();
+  return {
+    a2a: seller.url,
+    provider: NOBODY,
+    price: "0",
+    service: null,
+    serviceName: null,
+    needs: null,
+    etaSeconds: null,
+    at,
+    unpayable: `it turned down every sample task we could form (${reason})`,
+    kind: "sdk",
+    notify: seller.notify,
+    ...(seller.skill !== "negotiate" ? { skill: seller.skill } : {}),
+    task: null,
+    declined: reason,
+    askedAt: at,
+  };
+}

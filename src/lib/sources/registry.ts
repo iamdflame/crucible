@@ -192,7 +192,7 @@ const str = (v: unknown): string | null =>
  * All of them are somebody's claim about where the agent answers; none of them
  * are evidence that it does, and nothing here upgrades a rung.
  */
-function readServices(card: Record<string, unknown> | null): CardService[] {
+export function readServices(card: Record<string, unknown> | null): CardService[] {
   if (!card) return [];
   const out: CardService[] = [];
 
@@ -218,9 +218,18 @@ function readServices(card: Record<string, unknown> | null): CardService[] {
     if (e) out.push({ name: key, endpoint: e });
   }
 
-  // Same endpoint under two names is one service.
-  const seen = new Set<string>();
-  return out.filter((s) => (seen.has(s.endpoint) ? false : (seen.add(s.endpoint), true)));
+  /*
+    Same endpoint under two names is one service, named for the protocol it
+    speaks when one of its names says so: a card listing one URL as "web" and
+    as "A2A" used to keep "web", and was never called as an agent (6 Oct).
+  */
+  const PROTOCOL = /^(a2a|mcp|x402)$/i;
+  const byEndpoint = new Map<string, CardService>();
+  for (const s of out) {
+    const had = byEndpoint.get(s.endpoint);
+    if (!had || (!PROTOCOL.test(had.name) && PROTOCOL.test(s.name))) byEndpoint.set(s.endpoint, s);
+  }
+  return [...byEndpoint.values()];
 }
 
 async function readEntryUncached(chainId: number, tokenId: string): Promise<RegistryEntry | null> {

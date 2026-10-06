@@ -175,18 +175,11 @@ export async function runCensus(opts: CensusOptions): Promise<CensusRun> {
     if (pv) prevPreviews[r.tokenId] = pv;
   }
 
-  // A card with an A2A seller is asked whether it prices work for escrow, and what for this agent.
-  for (const t of targets) {
-    if (t.unread || overBudget() || !t.services.some((s) => /^a2a$/i.test(s.name ?? ""))) continue;
-    const seller = await escrowSeller(t.services).catch(() => undefined);
-    if (seller === undefined) continue; // Our read failed; the last quote stands.
-    if (seller === null) {
-      delete prevEscrow[t.tokenId];
-      continue;
-    }
-    const q = await negotiate(seller.url, t.name, { signers: t.signers, notify: seller.notify, skill: seller.skill }).catch(() => null);
-    if (q) prevEscrow[t.tokenId] = seller.skill === "negotiate" ? q : { ...q, skill: seller.skill };
-  }
+  /*
+    Prices for escrowed jobs are asked by their own job now (lib/census/quotes):
+    here they were asked last, inside this budget, one at a time in the same
+    order, and the probes spent the budget first. The older readings ride along.
+  */
 
   const all = [...prevResults.values()];
   const index: ProbeIndex = {

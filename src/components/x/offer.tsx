@@ -88,8 +88,16 @@ export function offerFor(l: Listing): HireOffer {
           }
         : null,
     // An escrow-only seller asks in its quote; everyone else in its 402 or our code.
-    blanksOk: !perCall && outsideEscrow?.kind === "sdk" && (l.category === "grid-trading" || l.category === "yield-optimisation"),
-    inputs: !perCall && outsideEscrow ? (outsideEscrow.kind === "sdk" ? standardInputs(l.category) : needsAsInputs(outsideEscrow.needs)) : inputsFor(l.tokenId, preview),
+    blanksOk: !perCall && outsideEscrow?.kind === "sdk" && !outsideEscrow.task && (l.category === "grid-trading" || l.category === "yield-optimisation"),
+    inputs:
+      !perCall && outsideEscrow
+        ? outsideEscrow.task
+          ? // Priced on its card's own example task: the buyer edits that, in the form the agent reads.
+            [{ name: "task", required: true, description: "the task, in the form this agent's card asks for", kind: "text", example: outsideEscrow.task }]
+          : outsideEscrow.kind === "sdk"
+            ? standardInputs(l.category)
+            : needsAsInputs(outsideEscrow.needs)
+        : inputsFor(l.tokenId, preview),
     job: jobRail
       ? {
           href: `/hire/${l.tokenId}`,

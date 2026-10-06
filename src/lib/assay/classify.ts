@@ -58,6 +58,8 @@ const SIGNALS: Record<Category, Signal[]> = {
     { phrase: "re-center", weight: 4 },
     { phrase: "recentre", weight: 4 },
     { phrase: "recenter", weight: 4 },
+    // "LP positions", "your LP": the job's own shorthand, whole word so "help" stays help.
+    { phrase: "lp", weight: 2, whole: true },
   ],
   "grid-trading": [
     { phrase: "grid trad", weight: 6 },
@@ -74,6 +76,13 @@ const SIGNALS: Record<Category, Signal[]> = {
     { phrase: "market making", weight: 3 },
     { phrase: "spread", weight: 2 },
     { phrase: "buy low sell high", weight: 2 },
+    /*
+      "An adaptive WBNB/USDC grid", "laddering buys below": how builders
+      describe a grid without the word "trading" (6 Oct: grid-navigator and
+      ChainHelix were unfiled). Whole word, so "GridMoon" and dgrid.ai are not.
+    */
+    { phrase: "grid", weight: 4, whole: true },
+    { phrase: "ladder", weight: 3 },
   ],
   "yield-optimisation": [
     { phrase: "yield optim", weight: 6 },
@@ -82,12 +91,21 @@ const SIGNALS: Record<Category, Signal[]> = {
     { phrase: "apy", weight: 3, whole: true },
     { phrase: "auto-compound", weight: 5 },
     { phrase: "autocompound", weight: 5 },
-    { phrase: "compounding", weight: 3 },
+    { phrase: "compound", weight: 3 },
     { phrase: "highest yield", weight: 5 },
     { phrase: "vault", weight: 2 },
     { phrase: "staking reward", weight: 3 },
     { phrase: "route liquidity", weight: 4 },
     { phrase: "harvest", weight: 3 },
+    /*
+      "Realised yield", "yield allocation": the plain word, as builders write
+      it (6 Oct: Marque's Tidemark and Yield Allocator were unfiled here and
+      hireable there). Whole word, so "ByteYield" and "yields" read the same.
+    */
+    { phrase: "yield", weight: 3, whole: true },
+    { phrase: "allocat", weight: 1 },
+    { phrase: "reinvest", weight: 3 },
+    { phrase: "lending", weight: 2 },
   ],
   "health-factor": [
     { phrase: "health factor", weight: 7 },
@@ -101,8 +119,36 @@ const SIGNALS: Record<Category, Signal[]> = {
     { phrase: "undercollateral", weight: 4 },
     { phrase: "venus", weight: 2 },
     { phrase: "aave", weight: 2 },
+    // "Watches loan health", "can be liquidated": the job in other words.
+    { phrase: "loan health", weight: 5 },
+    { phrase: "liquidated", weight: 4 },
+    { phrase: "borrow", weight: 2 },
+    { phrase: "collateral", weight: 2 },
   ],
 };
+
+/**
+ * Bumped whenever SIGNALS change, so the registry tail files again the rows
+ * read under an older version (lib/registry/tail). Only rows with no job are
+ * filed again: an agent already listed under a job is never moved by it.
+ */
+export const CLASSIFIER_VERSION = 2;
+
+/**
+ * The broad words added in version 2. Builders use them, but so do persona
+ * bots and research agents that mention "yield" in passing, so a match on
+ * these alone files an agent only when its card names something to call:
+ * a seller you could hire, not a chat persona (see `fileable`).
+ */
+export const WEAK_SIGNALS = new Set(["yield", "grid", "lp", "lending", "borrow", "collateral", "allocat", "ladder", "reinvest", "compound"]);
+
+/** Whether a classification may file an agent: a strong phrase, or broad words on a card with an endpoint. */
+export function fileable(c: Classification, hasEndpoint: boolean): boolean {
+  if (!c.category) return false;
+  if (c.matched.some((m) => !WEAK_SIGNALS.has(m))) return true;
+  // Broad words alone: on a card with something to call, and more than one passing mention ("lp" or "lending" alone is not a job).
+  return hasEndpoint && (c.scores[c.category] ?? 0) >= 3;
+}
 
 export interface Classification {
   category: Category | null;

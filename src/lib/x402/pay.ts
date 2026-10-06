@@ -497,3 +497,15 @@ export interface PaidCall {
   network guard, which uses Node's DNS, and this module is also loaded in the
   browser by the buy button.
 */
+
+/**
+ * The signed payment under both names sellers read it by: x402 v2's
+ * PAYMENT-SIGNATURE and the older X-PAYMENT. GuardRail, quoting x402 v2,
+ * read only X-PAYMENT and answered "payment required" to every payment we
+ * sent it (proved on 6 Oct). One authorisation under two names is still one
+ * payment: its nonce settles once. Server side only: a browser calling a
+ * seller directly must not add a header the seller's CORS does not allow.
+ */
+export function paymentHeaders(header: string, value: string): Record<string, string> {
+  return { "PAYMENT-SIGNATURE": value, "X-PAYMENT": value, [header]: value };
+}

@@ -25,6 +25,7 @@ import {
   type PaidCall,
   type Requirement,
   type Settlement,
+  paymentHeaders,
 } from "./pay";
 
 /**
@@ -158,7 +159,7 @@ export async function payAndCall(opts: {
 
   const startBlock = await marketClient.getBlockNumber();
   const signed = await signPayment(account, usable);
-  const second = await exchange(opts.url, { method, headers: { ...baseHeaders, [signed.header]: signed.value }, body });
+  const second = await exchange(opts.url, { method, headers: { ...baseHeaders, ...paymentHeaders(signed.header, signed.value) }, body });
   exchanges.push(second.ex);
   const deliverable = parseMaybe(second.text);
 

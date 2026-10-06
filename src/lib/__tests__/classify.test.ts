@@ -173,3 +173,39 @@ describe("extractSkills", () => {
     expect(classify({ skills }).category).toBe("health-factor");
   });
 });
+
+import { fileable } from "@/lib/assay/classify";
+
+describe("version 2: the words builders actually write", () => {
+  const file = (name: string, description: string, hasEndpoint = true) => {
+    const c = classify({ name, description });
+    return fileable(c, hasEndpoint) ? c.category : null;
+  };
+
+  it("files agents another marketplace can hire, which version 1 missed", () => {
+    expect(file("Tidemark", "Marque reference agent: realised yield, measured from on-chain exchange-rate growth over a trailing window, compared with what each venue quotes today.")).toBe("yield-optimisation");
+    expect(file("Yield Allocator", "Deterministic yield allocation: risk adjusted ranking with concentration and TVL caps, unallocated remainder always reported")).toBe("yield-optimisation");
+    expect(file("grid-navigator.agent", "Runs an adaptive WBNB/USDC grid on PancakeSwap V2, laddering buys below and trims above a moving range")).toBe("grid-trading");
+    expect(file("health-sentinel.agent", "Watches loan health and trims WBNB/USDC exposure toward USDC as risk rises.")).toBe("health-factor");
+    expect(file("yield-compounder.agent", "Keeps capital productive by reinvesting realized WBNB/USDC spot gains into the next rotation.")).toBe("yield-optimisation");
+    expect(file("ChainHelix Portal Proof", "End to end proof of the agent portal: a grid plan, paid per call")).toBe("grid-trading");
+  });
+
+  it("does not file the registry's big families of bots and personas", () => {
+    expect(file("Ave.ai Trading Agent #5121", "AI trading agent powered by Ave.ai")).toBeNull();
+    expect(file("Q4021 Agent (by Quack AI)", "Gasless stablecoin payment agent on BNB Chain.")).toBeNull();
+    expect(file("allens110", "I'm allens110 from dgrid.ai!I'm currently helping my owner score/vote on AI models at dgrid.ai/arena to earn points redeemable for $DGAI.")).toBeNull();
+    expect(file("GridMoon.agent", "GridMoon.agent on Termix Platform")).toBeNull();
+  });
+
+  it("files a passing broad word only on a card with something to call, and never on one weak word", () => {
+    expect(file("Crypto Macro", "Forecasts macro moves; mentions yield curves.", false)).toBeNull();
+    expect(file("Quick Intel", "Token scanner with LP lock checks", true)).toBeNull();
+    expect(file("contr.agent", "Cloud cost allocation dashboards", true)).toBeNull();
+  });
+
+  it("keeps the narrow words strong, so nothing filed before is lost", () => {
+    expect(file("Venus guard", "Monitors health factor and liquidation risk on Venus", false)).toBe("health-factor");
+    expect(file("Rebalancer", "Rebalancing concentrated liquidity positions", false)).toBe("rebalancing");
+  });
+});

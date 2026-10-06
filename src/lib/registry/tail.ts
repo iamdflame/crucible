@@ -26,7 +26,7 @@ import { ensureTables } from "@/lib/db/tables";
 import { snapshot, store, warm } from "@/lib/data/snapshots";
 import { withLease } from "@/lib/db/lease";
 import { readRegistryEntry, type RegistryEntry } from "@/lib/sources/registry";
-import { classify } from "@/lib/assay/classify";
+import { classify, CLASSIFIER_VERSION, fileable } from "@/lib/assay/classify";
 import { withTimeout } from "@/lib/cache";
 import type { IndexedAgent } from "@/lib/data/agents";
 import { putRegistryExtra, registryExtras, setRegistryExtras } from "./extras";
@@ -121,6 +121,9 @@ export function agentFrom(tokenId: string, entry: RegistryEntry | null, mint: Pa
     tags: entry?.claimedCategory ? [entry.claimedCategory] : null,
     skills: entry?.services.map((s) => s.name) ?? null,
   });
+  // Something a buyer could call: an http service or an x402 endpoint.
+  const callable = Boolean(entry?.x402Endpoint) || (entry?.services ?? []).some((s) => /^https?:/i.test(s.endpoint));
+  const filed = fileable(c, callable);
   return {
     tokenId,
     name,
@@ -134,9 +137,10 @@ export function agentFrom(tokenId: string, entry: RegistryEntry | null, mint: Pa
     feedbacks: 0,
     avgScore: null,
     createdAt: null,
-    category: (c.category as Category | null) ?? null,
-    confidence: c.confidence,
-    matched: c.matched,
+    category: filed ? ((c.category as Category | null) ?? null) : null,
+    confidence: filed ? c.confidence : 0,
+    matched: filed ? c.matched : [],
+    classifierVersion: CLASSIFIER_VERSION,
     lastSeen: entry?.at ?? new Date().toISOString(),
     registeredTx: mint.tx ?? null,
     registeredBlock: mint.block ?? null,
@@ -242,11 +246,13 @@ export async function resolvePending(opts: { budgetMs: number; limit?: number })
   await ensureTables();
   const started = Date.now();
   const rows = (await pg!`
-    select token_id, owner, block, tx from registry_agents
+    select token_id, owner, block, tx, (record->>'attempts')::int as attempts from registry_agents
     where coalesce((record->>'resolved')::boolean, false) = false
-    order by token_id::numeric desc
+      and coalesce(record->>'nextTryAt', '') < ${new Date().toISOString()}
+    order by coalesce((record->>'attempts')::int, 0) asc, token_id::numeric desc
     limit ${opts.limit ?? 400}
-  `) as { token_id: string; owner: string | null; block: string | number | null; tx: string | null }[];
+  `) as { token_id: string; owner: string | null; block: string | number | null; tx: string | null; attempts: number | null }[];
+  const unread: { tokenId: string; attempts: number; nextTryAt: string }[] = [];
   let resolved = 0;
   let classified = 0;
   const queue = [...rows];
@@ -264,6 +270,17 @@ export async function resolvePending(opts: { budgetMs: number; limit?: number })
         const r = queue.shift();
         if (!r) return;
         const entry = await withTimeout(readRegistryEntry(r.token_id).catch(() => null), 10_000);
+        if (!entry) {
+          /*
+            The card did not load: a slow host, a timeout. It used to be stored
+            as read, with no name and no job, and was never read again (652
+            agents by 6 Oct). It is tried again after 1 h, 6 h, 24 h, then weekly.
+          */
+          const attempts = (r.attempts ?? 0) + 1;
+          const wait = [3_600, 21_600, 86_400][attempts - 1] ?? 604_800;
+          unread.push({ tokenId: r.token_id, attempts, nextTryAt: new Date(Date.now() + wait * 1000).toISOString() });
+          continue;
+        }
         const agent = agentFrom(r.token_id, entry, { owner: r.owner ?? undefined, block: r.block === null ? undefined : Number(r.block), tx: r.tx ?? undefined });
         pending.push(agent);
         resolved += 1;
@@ -276,8 +293,47 @@ export async function resolvePending(opts: { budgetMs: number; limit?: number })
     }),
   );
   await flush();
+  if (unread.length) {
+    await pg!`
+      update registry_agents r set record = r.record || jsonb_build_object('resolved', false, 'attempts', u.attempts, 'nextTryAt', u.next), indexed_at = now()
+      from jsonb_to_recordset(${JSON.stringify(unread.map((u) => ({ token_id: u.tokenId, attempts: u.attempts, next: u.nextTryAt })))}::jsonb)
+        as u(token_id text, attempts int, next text)
+      where r.token_id = u.token_id
+    `;
+  }
   const [left] = (await pg!`select count(*)::int as n from registry_agents where coalesce((record->>'resolved')::boolean, false) = false`) as { n: number }[];
   return { resolved, classified, left: left?.n ?? 0 };
+}
+
+/** A card's protocols that a buyer could call, from what the tail stored. */
+const callableFrom = (r: { protocols?: unknown; x402?: unknown }): boolean =>
+  Boolean(r.x402) || (Array.isArray(r.protocols) && r.protocols.some((p) => /^(a2a|mcp|x402)$/i.test(String(p))));
+
+/**
+ * Files again the agents read under an older classifier that have no job
+ * yet. Only those: an agent already under a job is never moved by a rule
+ * change. Each one is marked with the version, so it is read once per change.
+ */
+export async function refileOld(limit = 3_000): Promise<{ looked: number; filed: number }> {
+  if (!pg) return { looked: 0, filed: 0 };
+  const rows = (await pg`
+    select token_id, record from registry_agents
+    where category is null and coalesce((record->>'resolved')::boolean, false)
+      and coalesce((record->>'classifierVersion')::int, 1) < ${CLASSIFIER_VERSION}
+    limit ${limit}
+  `) as { token_id: string; record: IndexedAgent & Record<string, unknown> }[];
+  if (!rows.length) return { looked: 0, filed: 0 };
+  const out = rows.map((r) => {
+    const c = classify({ name: r.record.name, description: r.record.description });
+    const filed = r.record.name ? fileable(c, callableFrom(r.record)) : false;
+    return { token_id: r.token_id, category: filed ? c.category : null, patch: filed ? { category: c.category, confidence: c.confidence, matched: c.matched, classifierVersion: CLASSIFIER_VERSION } : { classifierVersion: CLASSIFIER_VERSION } };
+  });
+  await pg`
+    update registry_agents r set category = coalesce(u.category, r.category), record = r.record || u.patch, indexed_at = case when u.category is null then r.indexed_at else now() end
+    from jsonb_to_recordset(${JSON.stringify(out)}::jsonb) as u(token_id text, category text, patch jsonb)
+    where r.token_id = u.token_id
+  `;
+  return { looked: rows.length, filed: out.filter((o) => o.category).length };
 }
 
 /**
@@ -290,8 +346,9 @@ export async function tailRegistry(opts: { budgetMs: number }): Promise<string> 
     const scan = await scanMints({ budgetMs: Math.min(opts.budgetMs / 3, 12_000) }).catch((e) => ({ error: scrub(e) }));
     const left = Math.max(0, opts.budgetMs - (Date.now() - started) - 3_000);
     const res = left > 4_000 ? await resolvePending({ budgetMs: left }) : null;
+    const refiled = await refileOld().catch(() => null);
     const s = "error" in scan ? `scan failed: ${scan.error}` : `scanned to block ${scan.cursor - 1} of ${scan.head}, ${scan.minted} new mints`;
-    return `${s}; ${res ? `resolved ${res.resolved} (${res.classified} filed under a job), ${res.left} still to read` : "no time left to resolve"}`;
+    return `${s}; ${res ? `resolved ${res.resolved} (${res.classified} filed under a job), ${res.left} still to read` : "no time left to resolve"}${refiled?.looked ? `; filed again ${refiled.looked}, ${refiled.filed} now under a job` : ""}`;
   });
   return out ?? "another slice holds the lease";
 }

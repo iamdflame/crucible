@@ -17,7 +17,7 @@ import { CHAIN_ID } from "@/lib/config";
 import { fail, gate, ok } from "@/lib/api/respond";
 import { CORS } from "@/lib/api/ratelimit";
 import { warm } from "@/lib/data/snapshots";
-import { getProbes } from "@/lib/data/probes";
+import { escrowQuoteMap, getProbes } from "@/lib/data/probes";
 import { findAgent } from "@/lib/data/agents";
 import { readRegistryEntry } from "@/lib/sources/registry";
 import { negotiateFull } from "@/lib/escrow/a2a";
@@ -49,18 +49,20 @@ export async function POST(request: Request) {
   const inputs = Object.fromEntries(
     Object.entries(body.inputs && typeof body.inputs === "object" ? (body.inputs as Record<string, unknown>) : {})
       .filter((e): e is [string, string] => /^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(e[0]) && typeof e[1] === "string")
-      .map(([k, v]) => [k, v.slice(0, 240)]),
+      // A structured task (an agent card's example form) can be longer than a field.
+      .map(([k, v]) => [k, v.slice(0, k === "task" ? 2_000 : 240)]),
   );
 
-  await warm(["probe"]);
-  const known = getProbes().escrowQuotes?.[tokenId];
+  await warm(["probe", "escrow-quotes"]);
+  const known = escrowQuoteMap()[tokenId];
   if (!known) return fail(404, "That agent has no escrow seller on record here.", CHAIN_ID, g.headers);
   const agent = findAgent(tokenId);
   const entry = await readRegistryEntry(tokenId).catch(() => null);
   const signers = [entry?.owner, typeof entry?.card?.agentWallet === "string" ? entry.card.agentWallet : null].filter((w): w is string => Boolean(w));
   // A grid's blank bounds are set around the price now, so the agent gets a band it can plan inside.
   const bnbUsd = agent?.category === "grid-trading" ? await poolNow().then((p) => p.usdtPerBnb, () => null) : null;
-  const task = taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
+  // A seller priced on its card's own example reads only that form: the buyer's edit of it, or the example itself.
+  const task = known.task ? inputs.task?.trim() || known.task : taskFor(agent?.category ?? null, agent?.name ?? `Agent ${tokenId}`, inputs, { bnbUsd });
 
   const live = await negotiateFull(known.a2a, task, { signers, notify: known.notify, skill: known.skill }).catch((e: Error) => ({ error: e.message }));
   if ("error" in live) return fail(502, `The agent's seller did not quote just now: ${live.error.slice(0, 120)}`, CHAIN_ID, g.headers);

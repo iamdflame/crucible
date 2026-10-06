@@ -67,3 +67,12 @@ export function probeFor(tokenId: string): ProbeResult | null {
 export function answered(tokenId: string): boolean {
   return probeFor(tokenId)?.answered ?? false;
 }
+
+/**
+ * Every escrowed-job price on record: the census's older readings, overlaid by
+ * the escrow-quotes job's own (lib/census/quotes), which asks every seller in
+ * turn and is not cut short by the probes.
+ */
+export function escrowQuoteMap(): Record<string, EscrowQuote> {
+  return { ...(getProbes().escrowQuotes ?? {}), ...((snapshot<Record<string, EscrowQuote>>("escrow-quotes")?.payload as Record<string, EscrowQuote> | undefined) ?? {}) };
+}

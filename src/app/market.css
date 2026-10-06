@@ -4274,6 +4274,15 @@ a.x-tl__actor:hover {
   font: inherit;
   font-size: var(--ts-sm);
 }
+/* A structured task, edited in the form the agent's card gives. */
+.x-input--area {
+  height: auto;
+  min-height: 96px;
+  padding-top: var(--s-2);
+  padding-bottom: var(--s-2);
+  resize: vertical;
+  line-height: 1.45;
+}
 .x-input:focus {
   outline: none;
   border-color: var(--c-accent-line);

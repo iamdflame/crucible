@@ -108,7 +108,8 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
   const [result, setResult] = useState<{ tx: string | null; body: unknown; price?: string } | null>(null);
   const [lastPrice, setLastPrice] = useState<string | undefined>(undefined);
   const { address } = useWallet();
-  const [values, setValues] = useState<Record<string, string>>({});
+  // Starts from any example the agent's card gives, so a structured task arrives in the form it reads.
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(offer.inputs.filter((i) => i.example).map((i) => [i.name, i.example!])));
 
   // A wallet input starts as the connected wallet: the question is usually about your own account.
   useEffect(() => {
@@ -362,16 +363,26 @@ export default function HireDrawer({ offer, openOn, onDone }: { offer: HireOffer
                   {i.required ? "" : " (optional)"}
                   {i.description ? <span className="x-hire__sub"> {i.description}</span> : null}
                 </span>
-                <input
-                  className="x-input x-mono"
-                  value={values[i.name] ?? ""}
-                  onChange={(e) => setValues((v) => ({ ...v, [i.name]: e.target.value }))}
-                  placeholder={i.kind === "wallet" ? "0x…" : i.kind === "position" ? "e.g. 7546488" : ""}
-                  inputMode={i.kind === "position" ? "numeric" : undefined}
-                  autoComplete="off"
-                  spellCheck={false}
-                  aria-invalid={wrong(i) ? true : undefined}
-                />
+                {i.example && i.example.length > 60 ? (
+                  <textarea
+                    className="x-input x-mono x-input--area"
+                    value={values[i.name] ?? ""}
+                    onChange={(e) => setValues((v) => ({ ...v, [i.name]: e.target.value }))}
+                    rows={4}
+                    spellCheck={false}
+                  />
+                ) : (
+                  <input
+                    className="x-input x-mono"
+                    value={values[i.name] ?? ""}
+                    onChange={(e) => setValues((v) => ({ ...v, [i.name]: e.target.value }))}
+                    placeholder={i.kind === "wallet" ? "0x…" : i.kind === "position" ? "e.g. 7546488" : ""}
+                    inputMode={i.kind === "position" ? "numeric" : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-invalid={wrong(i) ? true : undefined}
+                  />
+                )}
                 {wrong(i) ? <span className="x-hire__bad">{wrong(i)}</span> : null}
               </label>
             ))}

@@ -10,6 +10,10 @@
 import { sql } from "@/lib/db/client";
 import { ensureTables } from "@/lib/db/tables";
 import { isTeam } from "@/lib/team";
+import { DEFAULT_WARM, warm } from "@/lib/data/snapshots";
+import { warmRegistry } from "@/lib/registry/tail";
+import { hirePath, warmOutcomes } from "@/lib/market/hire-law";
+import { listings } from "@/lib/market/listing";
 
 const days = Number(process.argv[process.argv.indexOf("--days") + 1]) || 7;
 
@@ -61,6 +65,22 @@ async function main() {
     console.log(`\nhire steps by agent, last ${days} days:`);
     for (const [k, n] of [...steps.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15)) console.log(`  ${String(n).padStart(6)}  ${k}`);
   }
+  /*
+    Why each agent we list can or cannot be hired today, so a fault of ours
+    (a filing rule, a price request, a failure rule) shows up the day it starts
+    rather than a week later (6 Oct: 19 of 359, four of them for our reasons).
+  */
+  await Promise.all([warm(DEFAULT_WARM), warmRegistry().catch(() => undefined), warmOutcomes()]);
+  const reasons = new Map<string, number>();
+  const all = listings();
+  for (const l of all) {
+    const v = hirePath(l);
+    const k = v.ok ? "Hireable" : (v.short ?? "No reason given").replace(/\d+ (min|h|days) ago/, "N ago");
+    reasons.set(k, (reasons.get(k) ?? 0) + 1);
+  }
+  console.log(`\nagents listed: ${all.length}; by whether they can be hired, and why not:`);
+  for (const [k, n] of [...reasons.entries()].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(6)}  ${k}`);
+
   const ads = new Map<string, number>();
   for (const a of arrivals) if (/\/paid\//.test(a.source)) ads.set(a.source, (ads.get(a.source) ?? 0) + a.n);
   if (ads.size) {

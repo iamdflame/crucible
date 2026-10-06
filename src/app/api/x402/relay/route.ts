@@ -28,6 +28,7 @@ import { live } from "@/lib/data/live";
 import { whyUnsafe, whyUnsafeHost } from "@/lib/net/safe-fetch";
 import { cleanInputs, inputsFor, withInputs } from "@/lib/market/inputs";
 import { previewFor } from "@/lib/market/quotes";
+import { paymentHeaders } from "@/lib/x402/pay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
     headers: {
       accept: "application/json, text/event-stream",
       ...(body ? { "content-type": "application/json" } : {}),
-      ...(paid ? { [paid.header]: paid.value } : {}),
+      ...(paid ? paymentHeaders(paid.header, paid.value) : {}),
     },
     body,
     timeoutMs: 45_000,

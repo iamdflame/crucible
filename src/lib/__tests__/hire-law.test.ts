@@ -231,3 +231,35 @@ describe("the hire law", () => {
     });
   });
 });
+
+describe("a failed paid call costs only what failed", () => {
+  const failed = new Map([
+    [
+      "999999001",
+      { tokenId: "999999001", delivered: 0, paidNotDelivered: 0, refused: 1, lastAt: new Date(NOW - 3 * 3600_000).toISOString(), lastWhy: "it answered 402 to the signed payment: {}", lastTx: null, lastFailed: true },
+    ],
+  ]);
+  const escrowQuote = {
+    a2a: "https://seller.test/a2a",
+    provider: "0x73809F69916FcF7Ddc5BB1315fBdf96A569a5963" as const,
+    price: "100000000000000000",
+    service: null,
+    serviceName: null,
+    needs: null,
+    etaSeconds: 120,
+    at: minutesAgo(5),
+    unpayable: null,
+  };
+
+  it("keeps an escrowed job on offer, where the buyer's money comes back if no work does", () => {
+    const v = hirePath(stranger({ escrowQuote }), { now: NOW, outcomes: failed, escrowMissed: new Map() });
+    expect(v.ok).toBe(true);
+    expect(v.rails.map((r) => r.kind)).toEqual(["escrow"]);
+  });
+
+  it("withdraws the paid call, and says why when nothing else is left", () => {
+    const v = hirePath(stranger(), { now: NOW, outcomes: failed });
+    expect(v.ok).toBe(false);
+    expect(v.short).toBe("Refused a correct payment");
+  });
+});

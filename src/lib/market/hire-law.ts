@@ -186,16 +186,28 @@ export function hirePath(
     not fixed anything.
   */
   const seen = (opts.outcomes ?? history()).get(l.tokenId);
-  if (seen?.lastFailed && seen.lastAt) {
-    const took = seen.paidNotDelivered > 0 && seen.lastTx;
-    const what = took
-      ? `We paid it on ${shortDate(seen.lastAt)} and it answered with an error instead of the work`
-      : `It was offered a correctly signed payment on ${shortDate(seen.lastAt)} and refused it`;
-    return refuse(`${what}: ${(seen.lastWhy ?? "no reason given").slice(0, 220)}. It comes back once it delivers a paid call.`, took ? "Took payment, returned an error" : "Refused a correct payment");
-  }
+  /*
+    A failed paid call withdraws the paid call, and the job with capital, but
+    not an escrowed job: there the buyer's money waits in the contract and
+    comes back if no work arrives. Withdrawing that too hid agents another
+    marketplace hires every day (Brain on BNB's Grid Planner, 6 Oct).
+  */
+  const failure =
+    seen?.lastFailed && seen.lastAt
+      ? (() => {
+          const took = seen.paidNotDelivered > 0 && seen.lastTx;
+          const what = took
+            ? `We paid it on ${shortDate(seen.lastAt)} and it answered with an error instead of the work`
+            : `It was offered a correctly signed payment on ${shortDate(seen.lastAt)} and refused it`;
+          return {
+            reason: `${what}: ${(seen.lastWhy ?? "no reason given").slice(0, 220)}. It comes back once it delivers a paid call.`,
+            short: took ? "Took payment, returned an error" : "Refused a correct payment",
+          };
+        })()
+      : null;
 
   const rails: Rail[] = [];
-  if (l.quote?.payable) {
+  if (l.quote?.payable && !failure) {
     rails.push({ kind: "x402", price: l.priceLabel ?? l.quote.amount, method: l.quote.transferMethod ?? null, endpoint: l.quote.endpoint });
   }
   /*
@@ -214,15 +226,17 @@ export function hirePath(
   }
   // A job hands it capital to act with, which a trading pause forbids; its paid answer does not.
   // Jobs are offered only while the market settles them on its own (lib/market/jobs-open).
-  if (bidder && !pause && (opts.jobsOpen ?? JOBS_OPEN)) rails.push({ kind: "mandate" });
+  if (bidder && !pause && !failure && (opts.jobsOpen ?? JOBS_OPEN)) rails.push({ kind: "mandate" });
 
   if (!rails.length) {
+    if (failure) return refuse(failure.reason, failure.short);
     if (missed) {
       return refuse(
         `Escrowed job #${missed.jobId} reached its deadline on ${shortDate(missed.at)} with nothing delivered, so its buyer can take the budget back. It comes back once it delivers a job again.`,
         "Missed an escrowed job",
       );
     }
+    if (eq?.declined) return refuse(`It sells escrowed jobs, but turned down every sample task we could form: ${eq.declined}`, "Needs a task format it does not publish");
     if (eq?.unpayable) return refuse(`It prices escrowed jobs, but ${eq.unpayable}.`, "Its price is in a token we cannot pay");
     return refuse(
       l.quote

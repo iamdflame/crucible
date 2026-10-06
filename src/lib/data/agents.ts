@@ -42,6 +42,8 @@ export interface IndexedAgent {
   registeredBlock?: number | null;
   /** Where this row came from: the committed crawl, or read from the chain since. */
   source?: "crawl" | "tail" | "list" | "view";
+  /** The classifier version that filed it (lib/assay/classify CLASSIFIER_VERSION); older rows are filed again. */
+  classifierVersion?: number;
   /** Ladder rung, attached at render time. Not part of the stored index. */
   rung?: number;
   /** Why it sits there rather than higher. */

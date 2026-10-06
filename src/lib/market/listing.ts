@@ -21,7 +21,7 @@
  */
 
 import { CATEGORY_LABEL, type Category } from "@/lib/config";
-import { getProbes } from "@/lib/data/probes";
+import { escrowQuoteMap, getProbes } from "@/lib/data/probes";
 import { getAgentIndex, type IndexedAgent } from "@/lib/data/agents";
 import { reviewQuality, type ReviewQuality } from "@/lib/market/reviews";
 import { assayFor } from "@/lib/market/assays";
@@ -193,7 +193,7 @@ function quotes(): Record<string, Quote> {
 
 /** Prices for escrowed jobs, asked of A2A sellers during the census. */
 function escrowQuotes(): Record<string, EscrowQuote> {
-  return getProbes().escrowQuotes ?? {};
+  return escrowQuoteMap();
 }
 
 /** An escrow price as a tag, "0.10 $U", when a buyer here can fund it. */

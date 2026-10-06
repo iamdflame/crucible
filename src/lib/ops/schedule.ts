@@ -34,6 +34,7 @@ import { checkAlerts } from "@/lib/alerts/watch";
 import { requirements } from "@/lib/ops/requirements";
 import { runConformance } from "@/lib/conformance/run";
 import { warmOutcomes } from "@/lib/market/hire-law";
+import { refreshEscrowQuotes } from "@/lib/census/quotes";
 
 export interface Job {
   name: string;
@@ -294,6 +295,14 @@ export const JOBS: Job[] = [
     finds out. Each seller is visited at most once in twenty hours.
   */
   {
+    // Prices for escrowed jobs, every A2A seller in turn, out of the census so the probes never cut it short.
+    name: "escrow-quotes",
+    everyMinutes: 20,
+    budgetMs: 50_000,
+    afterResponse: true,
+    run: (budgetMs = 48_000) => refreshEscrowQuotes({ budgetMs }),
+  },
+  {
     name: "test-buys",
     everyMinutes: 60,
     budgetMs: 30_000,
@@ -382,7 +391,7 @@ export async function tick(opts: { only?: string[]; force?: boolean; maxMs?: num
  * route): their budgets add up to minutes, and run one after another in the
  * time one function has left, the later ones never ran at all.
  */
-const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "pool-gap", "test-buys", "test-hires", "requirements", "conformance"];
+const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "escrow-quotes", "pool-gap", "test-buys", "test-hires", "requirements", "conformance"];
 
 export async function dueAfterJobs(): Promise<string[]> {
   const last = await lastRuns();

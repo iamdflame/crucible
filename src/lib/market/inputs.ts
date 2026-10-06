@@ -18,6 +18,8 @@ export interface CallInput {
   description: string | null;
   /** How the drawer fills it: your wallet, a position id, or free text. */
   kind: "wallet" | "position" | "text";
+  /** A value to start from: the task an agent's own card gives as its example, in the form it reads. */
+  example?: string;
 }
 
 export function kindOf(name: string, description?: string | null): CallInput["kind"] {

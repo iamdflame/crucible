@@ -14,7 +14,7 @@
 
 import type { Hex } from "viem";
 import { payAndCall } from "@/lib/x402/pay-server";
-import { recordPaidCall, toRecord, listPaidCalls } from "@/lib/market/paid-calls";
+import { recordPaidCall, toRecord, listPaidCalls, outcomes } from "@/lib/market/paid-calls";
 import { confirmSettlement } from "@/lib/market/settlement";
 import { listings } from "@/lib/market/listing";
 import { hirePath } from "@/lib/market/hire-law";
@@ -28,6 +28,10 @@ import { DEMO_ADDRESS } from "@/lib/demo";
 const PER_CALL = 100_000_000_000_000_000n; // 0.10
 const PER_DAY = 1_000_000_000_000_000_000n; // 1.00
 const EVERY_MS = 20 * 3_600_000;
+/** A seller whose last paid call failed is paid again after this, so the hire law's "comes back once it delivers" can come true. */
+const RETRY_AFTER_MS = 48 * 3_600_000;
+/** After three failures in a row, once a week. */
+const RETRY_SLOW_MS = 7 * 24 * 3_600_000;
 
 export async function testBuys(opts: { budgetMs: number }): Promise<string> {
   const raw = process.env.AGENT_A_KEY;
@@ -38,12 +42,31 @@ export async function testBuys(opts: { budgetMs: number }): Promise<string> {
   const since = Date.now() - 24 * 3_600_000;
   let spent = calls.filter((c) => c.note?.startsWith("Daily test purchase") && Date.parse(c.at) > since).reduce((s, c) => s + BigInt(c.amount ?? "0"), 0n);
   const counts = await hireCounts().catch(() => null);
+  const past = outcomes(calls);
+  // Failures in a row, newest first, the seller's own (a failure we caused is not counted against it).
+  const streak = (id: string) => {
+    let n = 0;
+    for (const c of calls.filter((x) => x.tokenId === id && x.fault !== "ours").sort((a, b) => b.at.localeCompare(a.at))) {
+      if (c.paid && c.delivered) break;
+      n += 1;
+    }
+    return n;
+  };
   const due = listings(counts?.byTokenId, counts?.settled).filter((l) => {
-    if (isOurs(l) || !l.quote) return false;
-    const v = hirePath(l);
-    if (!v.ok || !v.rails.some((r) => r.kind === "x402")) return false;
+    if (isOurs(l) || !l.quote?.payable) return false;
     const last = calls.find((c) => c.tokenId === l.tokenId);
-    return !last || Date.now() - Date.parse(last.at) > EVERY_MS;
+    const v = hirePath(l);
+    if (v.ok && v.rails.some((r) => r.kind === "x402")) return !last || Date.now() - Date.parse(last.at) > EVERY_MS;
+    /*
+      Pulled for a failed paid call, and otherwise ready: answering now, with
+      a price we can pay. It was never paid again, so it could never come
+      back (16 sellers by 6 Oct). It is tried again after two days; after
+      three failures in a row, once a week.
+    */
+    const o = past.get(l.tokenId);
+    if (!o?.lastFailed || !o.lastAt || l.liveness !== "live") return false;
+    const wait = streak(l.tokenId) >= 3 ? RETRY_SLOW_MS : RETRY_AFTER_MS;
+    return Date.now() - Date.parse(o.lastAt) > wait;
   });
   const out: string[] = [];
   for (const l of due) {

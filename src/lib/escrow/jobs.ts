@@ -28,7 +28,7 @@ import { withLease } from "@/lib/db/lease";
 import { REFERENCE, referenceRegistrations, type ReferenceAgent } from "@/lib/house";
 import { HOUSE_SERVICES } from "@/lib/house/services";
 import { SITE } from "@/lib/site";
-import { getProbes } from "@/lib/data/probes";
+import { escrowQuoteMap, getProbes } from "@/lib/data/probes";
 import { snapshot, store, warm } from "@/lib/data/snapshots";
 import { scanLogs } from "@/lib/chain/logs";
 import { COMMERCE_ABI, ESCROW, HOUSE_BUDGET, JOB_FUNDED, JOB_STATUS, POLICY_ABI, ROUTER_ABI, VIA_HOST, type JobStatus } from "./contracts";
@@ -302,8 +302,8 @@ async function recordOutside(jobId: bigint, fundTx: Hash, job: OnChainJob, o: { 
     if (job.budget < signed.price) return { refused: "That job holds less than the signed price.", status: 400 };
   } else {
     // The census this instance holds may predate the quote; read the newest.
-    await warm(["probe"]);
-    const q = getProbes().escrowQuotes?.[o.tokenId];
+    await warm(["probe", "escrow-quotes"]);
+    const q = escrowQuoteMap()[o.tokenId];
     if (!q || q.unpayable) return { refused: "That agent has no escrow price on record here.", status: 400 };
     if (q.provider.toLowerCase() !== job.provider.toLowerCase()) return { refused: "That job names a different provider from the one this agent's seller quoted.", status: 400 };
     if (job.budget < BigInt(q.price)) return { refused: "That job holds less than the seller's price.", status: 400 };
@@ -410,8 +410,8 @@ async function notifyOutside(row: EscrowJob & { sellerAnswer: string | null; sel
   }
   const [r] = (await pg!`select notified_at from escrow_jobs where job_id = ${row.jobId}`) as { notified_at: Date | null }[];
   if (r?.notified_at && Date.now() - new Date(r.notified_at).getTime() < 3 * 60_000) return "seller told recently";
-  await warm(["probe"]);
-  const q = getProbes().escrowQuotes?.[row.tokenId];
+  await warm(["probe", "escrow-quotes"]);
+  const q = escrowQuoteMap()[row.tokenId];
   if (!q) return "no seller endpoint on record";
   if (q.notify === false) return "the seller watches the chain for funded jobs";
   await pg!`update escrow_jobs set notified_at = now() where job_id = ${row.jobId}`;
