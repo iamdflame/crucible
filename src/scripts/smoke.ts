@@ -206,6 +206,14 @@ async function main() {
         return (ids.length > 0 && dead.length === 0) || `${dead.length} of ${ids.length} cards cannot be hired (${dead.join(", ")})`;
       },
     },
+    {
+      // 19 on 6 Oct before the hireability pass, 28 after it: a slide back below 25 means something on our side broke again.
+      name: "at least 25 agents are ready to hire",
+      test: (h) => {
+        const n = Number(/x-tab x-tab--on"[^>]*>.*?<span class="x-tab__n">(\d+)</.exec(h)?.[1] ?? NaN);
+        return n >= 25 || `the Ready to hire tab counts ${Number.isNaN(n) ? "nothing" : n}`;
+      },
+    },
   ]);
   await page("/graveyard", [
     { name: "failures are listed", test: (h) => h.includes("x-grave__who") || "no rows" },
