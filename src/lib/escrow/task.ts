@@ -8,6 +8,7 @@
  */
 
 import { VIA } from "./contracts";
+import { WBNB } from "@/lib/chain/valuation/prices";
 import { sanitize } from "./sdk";
 
 /** The task in words the agent can act on, from what the buyer entered for its job. */
@@ -42,7 +43,12 @@ const round = (n: number) => (n >= 100 ? Math.round(n) : Number(n.toFixed(2)));
  * 8% either side of the price now, and the stop 5% under the lower bound.
  */
 export function gridTask(inputs: Record<string, string>, bnbUsd: number | null): string {
-  const pair = (inputs.pair ?? "").trim() || "WBNB/USDT";
+  /*
+    The token's address goes with its name: Brain on BNB's grid seller turns a
+    plan down without one ("grid_plan needs `token`: the token or pool
+    address", 6 Oct), and the others read past it.
+  */
+  const pair = (inputs.pair ?? "").trim() || `WBNB/USDT (token ${WBNB})`;
   const lower = num(inputs.lower) ?? (bnbUsd ? round(bnbUsd * 0.92) : null);
   const upper = num(inputs.upper) ?? (bnbUsd ? round(bnbUsd * 1.08) : null);
   const capital = num(inputs.capital) ?? 1000;

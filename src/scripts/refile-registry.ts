@@ -13,6 +13,7 @@
 import { sql } from "@/lib/db/client";
 import { classify, CLASSIFIER_VERSION, fileable } from "@/lib/assay/classify";
 import { refileOld } from "@/lib/registry/tail";
+import { fileIndex } from "@/lib/data/agents";
 
 const APPLY = process.argv.includes("--apply");
 
@@ -51,27 +52,39 @@ async function main() {
     for (const r of hits.slice(0, 40)) console.log(`  #${r.token_id} ${r.record.name} -> ${classify({ name: r.record.name, description: r.record.description }).category}`);
   }
 
-  // 3. The September crawl's rows with no job.
-  const crawl = (await sql`
-    select token_id, name, description, a2a_endpoint, mcp_server, x402_supported from agents where category is null and name is not null`) as {
-    token_id: string;
-    name: string;
-    description: string | null;
-    a2a_endpoint: string | null;
-    mcp_server: string | null;
-    x402_supported: boolean | null;
-  }[];
-  const moved = crawl
-    .map((r) => ({ r, c: classify({ name: r.name, description: r.description }) }))
-    .filter(({ r, c }) => fileable(c, Boolean(r.a2a_endpoint || r.mcp_server || r.x402_supported)));
-  console.log(`crawl rows that ${APPLY ? "are" : "would be"} filed: ${moved.length} of ${crawl.length}`);
-  for (const { r, c } of moved.slice(0, 40)) console.log(`  #${r.token_id} ${r.name} -> ${c.category} [${c.matched.join(", ")}]`);
-  if (APPLY && moved.length) {
-    const rows = moved.map(({ r, c }) => ({ token_id: r.token_id, category: c.category, confidence: c.confidence }));
-    await sql`
-      update agents a set category = u.category, category_confidence = u.confidence, updated_at = now()
-      from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as u(token_id text, category text, confidence real)
-      where a.token_id::text = u.token_id and a.category is null`;
+  /*
+    3. The September crawl's agents with no job. The crawl is a committed file,
+    so they are written into registry_agents, which the site lays over the
+    file (registryExtras): filed ones show at once, and the rest are there for
+    the next classifier version to look at again.
+  */
+  const crawl = fileIndex().agents.filter((a) => !a.category && a.name);
+  const rows = crawl.map((a) => {
+    const c = classify({ name: a.name, description: a.description });
+    const callable = a.x402 || a.protocols.some((p) => /^(a2a|mcp|x402)$/i.test(p));
+    const filed = fileable(c, callable);
+    return {
+      token_id: a.tokenId,
+      owner: a.owner,
+      category: filed ? c.category : null,
+      record: { ...a, category: filed ? c.category : null, confidence: filed ? c.confidence : 0, matched: filed ? c.matched : [], classifierVersion: CLASSIFIER_VERSION, resolved: true, source: "crawl" },
+    };
+  });
+  const filed = rows.filter((r) => r.category);
+  console.log(`crawl agents with no job: ${crawl.length}; ${APPLY ? "filed" : "would be filed"}: ${filed.length}`);
+  for (const r of filed.slice(0, 40)) console.log(`  #${r.token_id} ${r.record.name} -> ${r.category} [${r.record.matched.join(", ")}]`);
+  if (APPLY && rows.length) {
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      await sql`
+        insert into registry_agents (token_id, owner, category, record, source, indexed_at)
+        select x.token_id, x.owner, x.category, x.record, 'crawl', now()
+        from jsonb_to_recordset(${JSON.stringify(batch)}::jsonb) as x(token_id text, owner text, category text, record jsonb)
+        on conflict (token_id) do update set
+          category = coalesce(registry_agents.category, excluded.category),
+          record = case when registry_agents.category is null then registry_agents.record || excluded.record else registry_agents.record end,
+          indexed_at = case when registry_agents.category is null and excluded.category is not null then now() else registry_agents.indexed_at end`;
+    }
   }
 }
 

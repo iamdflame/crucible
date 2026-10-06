@@ -55,8 +55,9 @@ describe("BNB's standard hire (bnbagent-sdk)", () => {
 describe("the task an outside agent is asked", () => {
   it("states a grid with both bounds, a stop and the capital, around the price now when left blank", async () => {
     const { gridTask, taskFor } = await import("../escrow/task");
-    expect(gridTask({}, 776)).toBe("Grid plan for WBNB/USDT between 714 and 838 USDT, stop 678, capital 1000 USD, 10 levels");
-    expect(gridTask({ lower: "700", upper: "800", capital: "500" }, 776)).toBe("Grid plan for WBNB/USDT between 700 and 800 USDT, stop 665, capital 500 USD, 10 levels");
+    // The token's address rides with its name: one grid seller plans nothing without it (6 Oct).
+    expect(gridTask({}, 776)).toBe("Grid plan for WBNB/USDT (token 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c) between 714 and 838 USDT, stop 678, capital 1000 USD, 10 levels");
+    expect(gridTask({ lower: "700", upper: "800", capital: "500" }, 776)).toBe("Grid plan for WBNB/USDT (token 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c) between 700 and 800 USDT, stop 665, capital 500 USD, 10 levels");
     expect(taskFor("health-factor", "Keel", { wallet: "0xabc" })).toMatch(/for 0xabc, via mandatemarkets\.com$/);
     expect(taskFor("grid-trading", "Lattice", {}, { bnbUsd: 776 })).toMatch(/^Grid plan .* via mandatemarkets\.com$/);
   });
