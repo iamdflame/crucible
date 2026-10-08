@@ -89,6 +89,11 @@ export async function testBuys(opts: { budgetMs: number }): Promise<string> {
     const url = withInputs(l.quote!.endpoint, Object.fromEntries(inputs.filter((i) => i.kind === "wallet").map((i) => [i.name, DEMO_ADDRESS])));
     try {
       const call = await payAndCall({ url, key, maxAmount: PER_CALL, settleWaitMs: 20_000 });
+      if (call.payerShort) {
+        // Nothing was offered, so nothing is recorded: the seller is tried again once the pool is topped up.
+        out.push(`#${l.tokenId}: the trial pool holds less than its price`);
+        continue;
+      }
       const rec = {
         ...toRecord(call, { tokenId: l.tokenId, name: l.name, category: l.category ?? "unclassified", sponsored: true, subject: DEMO_ADDRESS, evidence: null }),
         note: "Daily test purchase from MANDATE's trial pool, to keep the hire law's record current.",

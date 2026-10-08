@@ -104,6 +104,7 @@ export function toRecord(
     deliverable: call.deliverable,
     at,
     ms: call.ms,
+    ...(call.payerShort ? { fault: "ours" as const, note: "Our paying wallet held less than the price, so no payment was signed." } : {}),
   };
 }
 

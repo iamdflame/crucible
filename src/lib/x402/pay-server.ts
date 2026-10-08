@@ -18,6 +18,7 @@ import {
   TRANSFER,
   decodeHeader,
   ensurePermit2Allowance,
+  heldBy,
   readRequirements,
   signPayment,
   whyUnpayable,
@@ -152,6 +153,21 @@ export async function payAndCall(opts: {
   if (!usable) {
     const reasons = offers.map((o) => whyUnpayable(o) ?? `it asks ${o.amount}, above the ${opts.maxAmount} this call may spend`);
     return out({ refused: reasons.join("; ") || "its 402 names no requirement this client can read" });
+  }
+
+  /*
+    The trial pool paid Agripinaa Ranger 0.05 USDT on 6 Oct and kept 0.0135.
+    The next five Agripinaa payments were signed anyway, failed at the
+    transfer (TRANSFER_FROM_FAILED), and were held against the sellers. A
+    payer that cannot cover the price signs nothing.
+  */
+  const held = await heldBy(account.address, usable.asset).catch(() => null);
+  if (held !== null && held < usable.amount) {
+    return out({
+      payerShort: true,
+      requirement: serialisable(usable),
+      refused: `our paying wallet holds ${held} of the token it asks for, less than its price of ${usable.amount}, so nothing was signed`,
+    });
   }
 
   let approveTx: Hex | null = null;

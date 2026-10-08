@@ -393,6 +393,11 @@ export async function signPayment(
   return paymentEnvelope(r, account.address, signature, td);
 }
 
+/** What a wallet holds of the token it is about to pay in. */
+export async function heldBy(owner: Address, token: Address): Promise<bigint> {
+  return (await marketClient.readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [owner] })) as bigint;
+}
+
 /**
  * Lets Permit2 move exactly the amount about to be paid, when it cannot already.
  *
@@ -489,6 +494,8 @@ export interface PaidCall {
   deliverable: unknown;
   exchanges: Exchange[];
   ms: number;
+  /** The payer held less than the price, so nothing was signed: a failure of ours, never the seller's. */
+  payerShort?: boolean;
 }
 
 /*
