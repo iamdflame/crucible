@@ -15,9 +15,9 @@
 import { createPublicClient, http, type Hash } from "viem";
 import { bsc } from "viem/chains";
 import { IDENTITY_REGISTRY } from "@/lib/config";
-import { fileIndex, type IndexedAgent } from "@/lib/data/agents";
+import { fileIndex, getAgentIndex, type IndexedAgent } from "@/lib/data/agents";
 import { getAgent } from "@/lib/sources/scan";
-import { mintIn, storeCrawlMints, TRANSFER_TOPIC } from "@/lib/registry/tail";
+import { mintIn, storeCrawlMints, TRANSFER_TOPIC, warmRegistry } from "@/lib/registry/tail";
 
 const dry = process.argv.includes("--dry");
 // Receipts from March are gone from most free providers, which prune old blocks; BNB Chain's own seed keeps them.
@@ -45,7 +45,15 @@ async function around(tokenId: string, block: number): Promise<{ tx: string; blo
 }
 
 async function main() {
-  const targets = fileIndex().agents.filter((a) => a.category && !a.registeredTx);
+  /*
+    Crawl agents as the site reads them: the committed file with the registry
+    overlay on top. A crawl agent filed under a job later (by the classifier's
+    second version, through the overlay) has its job only there, and one whose
+    mint was already stored has it only there too.
+  */
+  await warmRegistry();
+  const crawl = new Set(fileIndex().agents.map((a) => a.tokenId));
+  const targets = getAgentIndex().agents.filter((a) => crawl.has(a.tokenId) && a.category && !a.registeredTx);
   console.log(`${targets.length} classified crawl agents without a mint transaction${dry ? " (dry run)" : ""}`);
   const found: IndexedAgent[] = [];
   const missing: string[] = [];

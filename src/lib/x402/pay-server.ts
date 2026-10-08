@@ -19,6 +19,7 @@ import {
   decodeHeader,
   ensurePermit2Allowance,
   heldBy,
+  paidTool,
   readRequirements,
   signPayment,
   whyUnpayable,
@@ -173,9 +174,15 @@ export async function payAndCall(opts: {
   let approveTx: Hex | null = null;
   if (usable.method === "permit2") approveTx = await ensurePermit2Allowance(opts.key, usable.asset, usable.amount);
 
+  // A seller of MCP tools over x402 is paid on a tools/call, not on a repeat of the GET that asked for terms.
+  const tool = opts.body === undefined && method === "GET" ? paidTool(parseMaybe(first.text), first.res.headers.get("payment-required")) : null;
+  const paidMethod = tool ? "POST" : method;
+  const paidBody = tool ? JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: {} } }) : body;
+  const paidHeaders = tool ? { ...baseHeaders, "content-type": "application/json" } : baseHeaders;
+
   const startBlock = await marketClient.getBlockNumber();
   const signed = await signPayment(account, usable);
-  const second = await exchange(opts.url, { method, headers: { ...baseHeaders, ...paymentHeaders(signed.header, signed.value) }, body });
+  const second = await exchange(opts.url, { method: paidMethod, headers: { ...paidHeaders, ...paymentHeaders(signed.header, signed.value) }, body: paidBody });
   exchanges.push(second.ex);
   const deliverable = parseMaybe(second.text);
 

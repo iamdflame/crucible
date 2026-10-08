@@ -24,7 +24,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { registeredCount } from "@/lib/registry/count";
 import { withTimeout } from "@/lib/cache";
 import { DEMO_ADDRESS } from "@/lib/demo";
-import { HOUSE_LEASHES, houseSessionId } from "@/lib/chain/house";
+import { HOUSE_LEASHES, houseSessionId, supersededOf } from "@/lib/chain/house";
 import { pauseForSlug } from "@/lib/market/paused";
 import { listings } from "@/lib/market/listing";
 import { hirePath } from "@/lib/market/hire-law";
@@ -132,7 +132,8 @@ export async function judgePathChecks(): Promise<Check[]> {
         Three such keys sat on the demo account for a week before an audit
         found them. This counts them on every sample.
       */
-      const known = new Set(all.map((x) => x.keyId.toLowerCase()));
+      // A key a renewal replaced is ours until it expires: the record that replaced it carries it.
+      const known = new Set([...all.map((x) => x.keyId.toLowerCase()), ...all.flatMap((x) => supersededOf(x).map((k) => k.keyId.toLowerCase()))]);
       const raw = process.env.PRIVATE_KEY;
       const adminKeyId = raw ? keccak256(privateKeyToAccount((raw.startsWith("0x") ? raw : `0x${raw}`) as Hex).publicKey).toLowerCase() : null;
       const keys = await activeKeys(DEMO_ADDRESS as Hex).catch(() => [] as Hex[]);

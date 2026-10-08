@@ -23,20 +23,21 @@ const VAULT = vi.hoisted(() => ({
     },
   ],
 }));
-const sent = vi.hoisted(() => [] as { headers?: Record<string, string> }[]);
+const sent = vi.hoisted(() => [] as { method?: string; body?: string; headers?: Record<string, string> }[]);
+const sells = vi.hoisted(() => ({ tools: false }));
 const held = vi.hoisted(() => ({ amount: 0n }));
 const chain = vi.hoisted(() => ({ readContract: vi.fn(), getBlockNumber: vi.fn(async () => 1n), getLogs: vi.fn(async () => []) }));
 
 vi.mock("@/lib/chain/market", () => ({ marketClient: chain, logClients: [], walletFor: vi.fn() }));
 vi.mock("@/lib/db/client", () => ({ sql: null, db: null, hasDb: false }));
 vi.mock("@/lib/net/safe-fetch", () => ({
-  safeFetch: vi.fn(async (url: string, opts: { headers?: Record<string, string> }) => {
-    sent.push({ headers: opts.headers });
+  safeFetch: vi.fn(async (url: string, opts: { method?: string; body?: string; headers?: Record<string, string> }) => {
+    sent.push({ method: opts.method, body: opts.body, headers: opts.headers });
     const paidFor = Object.keys(opts.headers ?? {}).some((k) => /^x-payment$/i.test(k));
     return {
       status: paidFor ? 200 : 402,
       headers: new Headers(),
-      text: paidFor ? '{"ok":true}' : JSON.stringify(VAULT),
+      text: paidFor ? '{"ok":true}' : JSON.stringify(sells.tools ? { ...VAULT, tools: [{ tool: "list_vaults", amount: "10000000000000000" }] } : VAULT),
       truncated: false,
       bytes: 0,
       finalUrl: url,
@@ -53,6 +54,7 @@ const U = VAULT.accepts[0]!.asset as Address;
 
 beforeEach(() => {
   sent.length = 0;
+  sells.tools = false;
   chain.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
     if (functionName === "balanceOf") return held.amount;
     if (functionName === "DOMAIN_SEPARATOR") return domainSeparator({ domain: { name: "United Stables", version: "1", chainId: 56, verifyingContract: U } });
@@ -77,5 +79,24 @@ describe("a payer short of the price", () => {
     expect(call.payerShort).toBeUndefined();
     expect(sent).toHaveLength(2);
     expect(toRecord(call, { tokenId: "338253", name: "Vault", category: "yield-optimisation", sponsored: true, subject: null, evidence: null }).fault).toBeUndefined();
+  });
+});
+
+describe("a seller of MCP tools over x402", () => {
+  it("is paid on a tools/call for the tool its 402 names, not on a repeat of the GET", async () => {
+    held.amount = 10n ** 18n;
+    sells.tools = true;
+    const call = await payAndCall({ url: "https://seller.test/x402", key: KEY, maxAmount: 10n ** 17n, settleWaitMs: 0 });
+    expect(call.delivered).toBe(true);
+    expect(sent[0]!.method).toBe("GET");
+    expect(sent[1]!.method).toBe("POST");
+    expect(JSON.parse(sent[1]!.body!)).toEqual({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_vaults", arguments: {} } });
+  });
+
+  it("keeps a plain GET for a seller that names no tools", async () => {
+    held.amount = 10n ** 18n;
+    await payAndCall({ url: "https://seller.test/x402", key: KEY, maxAmount: 10n ** 17n, settleWaitMs: 0 });
+    expect(sent[1]!.method).toBe("GET");
+    expect(sent[1]!.body).toBeUndefined();
   });
 });

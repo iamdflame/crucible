@@ -99,6 +99,14 @@ export interface RenewalOutcome {
   skipped?: string;
 }
 
+/** Keys a house session's renewals replaced that may still be valid on chain, as its record carries them. */
+export function supersededOf(rec: { meta?: Record<string, unknown> } | null | undefined): { keyId: string; expiry: number }[] {
+  const list = rec?.meta?.superseded;
+  return Array.isArray(list)
+    ? list.filter((k): k is { keyId: string; expiry: number } => Boolean(k) && typeof (k as { keyId?: unknown }).keyId === "string" && typeof (k as { expiry?: unknown }).expiry === "number")
+    : [];
+}
+
 /**
  * Renews the house sessions that are within `withinDays` of expiring, or have
  * already expired. A session with longer than that left is left alone: each
@@ -134,6 +142,16 @@ export async function renewHouseSessions(opts: { days?: number; withinDays?: num
       out.push({ slug: leash.slug, was, renewed: false, expiry: current?.expiry ?? null, error: `deferred: ${opts.max} renewals already done on this run` });
       continue;
     }
+    /*
+      A renewal writes the new key over this record, and the key it replaces
+      stays valid on chain until its own expiry. Unrecorded, it reads to the
+      audit as authority nobody accounts for (Range-1's and Yield-1's old keys,
+      after the 6 Oct renewal). So the record carries the keys it superseded
+      until each one expires.
+    */
+    const now = Math.floor(Date.now() / 1000);
+    const carried = supersededOf(current).filter((k) => k.expiry > now);
+    const superseded = current && current.expiry > now ? [...carried, { keyId: current.keyId, expiry: current.expiry }] : carried;
     try {
       spent += 1;
       const rec = await grantScopedSession({
@@ -147,7 +165,7 @@ export async function renewHouseSessions(opts: { days?: number; withinDays?: num
         capWei: 0n,
         ttlSeconds: days * 24 * 3600,
         register: opts.register ?? true,
-        meta: { renewed: `granted for ${days} days; the previous session was ${was}` },
+        meta: { renewed: `granted for ${days} days; the previous session was ${was}`, superseded },
       });
       out.push({ slug: leash.slug, was, renewed: true, expiry: rec.expiry, registrationTx: rec.registrationTx ?? null });
     } catch (e) {

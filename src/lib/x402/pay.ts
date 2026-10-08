@@ -170,6 +170,26 @@ function methodOf(scheme: string, extra: Record<string, unknown>, asset: string)
  * both; v2 servers put `resource` at the top level as an object, v1 servers
  * put it on each requirement as a string. All of those are read.
  */
+/**
+ * The paid tool a 402 names, when the seller sells MCP tools over x402.
+ *
+ * HyperliquidVault's 402 lists `tools` ({tool, amount}) and says to "POST MCP
+ * tools/call here or at /mcp with a PAYMENT-SIGNATURE header". A paid GET to
+ * the same URL is answered with the 402 again, so from 28 Sep our daily test
+ * purchase recorded a correct seller as refusing payment. The first tool named
+ * is the one called, with no arguments. Pure, for tests.
+ */
+export function paidTool(body: unknown, paymentRequiredHeader?: string | null): string | null {
+  for (const doc of [body && typeof body === "object" ? (body as Record<string, unknown>) : null, decodeHeader(paymentRequiredHeader)]) {
+    const tools = doc && Array.isArray(doc.tools) ? (doc.tools as unknown[]) : [];
+    for (const t of tools) {
+      const name = t && typeof t === "object" ? ((t as Record<string, unknown>).tool ?? (t as Record<string, unknown>).name) : null;
+      if (typeof name === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(name)) return name;
+    }
+  }
+  return null;
+}
+
 export function readRequirements(body: unknown, paymentRequiredHeader?: string | null): Requirement[] {
   const fromHeader = decodeHeader(paymentRequiredHeader);
   const fromBody = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
