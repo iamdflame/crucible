@@ -185,6 +185,24 @@ const STATEMENTS: { name: string; run: () => Promise<unknown> }[] = [
     },
   },
   {
+    // The same, on BNB's testnet deployment of the kernel: Set and Earn counts testnet hires, and four shortlisted marketplaces open their jobs there.
+    name: "testnet_jobs",
+    run: async () => {
+      await pg!`
+        create table if not exists testnet_jobs (
+          job_id text primary key,
+          client text not null,
+          provider text not null,
+          amount text not null,
+          block bigint not null,
+          tx text not null,
+          at timestamptz not null
+        )
+      `;
+      await pg!`create index if not exists testnet_jobs_client on testnet_jobs (client)`;
+    },
+  },
+  {
     // An agent's Set and Earn checks, kept for half an hour: the onchain part costs dozens of archive reads.
     name: "qualifications",
     run: () => pg!`create table if not exists qualifications (token_id text primary key, payload jsonb not null, at timestamptz not null default now())`,

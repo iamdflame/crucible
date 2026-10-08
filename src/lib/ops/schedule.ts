@@ -35,6 +35,7 @@ import { requirements } from "@/lib/ops/requirements";
 import { runConformance } from "@/lib/conformance/run";
 import { warmOutcomes } from "@/lib/market/hire-law";
 import { refreshEscrowQuotes } from "@/lib/census/quotes";
+import { watchTestnet } from "@/lib/campaign/testnet";
 
 export interface Job {
   name: string;
@@ -303,6 +304,14 @@ export const JOBS: Job[] = [
     run: (budgetMs = 48_000) => refreshEscrowQuotes({ budgetMs }),
   },
   {
+    // Jobs funded on BNB's testnet escrow, so a buyer's Set and Earn progress here counts the hires they made on testnet marketplaces too.
+    name: "testnet-jobs",
+    everyMinutes: 10,
+    budgetMs: 40_000,
+    afterResponse: true,
+    run: (budgetMs = 38_000) => watchTestnet({ budgetMs }),
+  },
+  {
     name: "test-buys",
     everyMinutes: 60,
     budgetMs: 30_000,
@@ -391,7 +400,7 @@ export async function tick(opts: { only?: string[]; force?: boolean; maxMs?: num
  * route): their budgets add up to minutes, and run one after another in the
  * time one function has left, the later ones never ran at all.
  */
-const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "escrow-quotes", "pool-gap", "test-buys", "test-hires", "requirements", "conformance"];
+const AFTER_PRIORITY = ["escrow", "alerts", "leashes", "epochs", "settlements", "registry", "escrow-quotes", "testnet-jobs", "pool-gap", "test-buys", "test-hires", "requirements", "conformance"];
 
 export async function dueAfterJobs(): Promise<string[]> {
   const last = await lastRuns();

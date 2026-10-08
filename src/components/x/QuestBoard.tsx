@@ -25,9 +25,20 @@ interface Counted {
   tx: string | null;
 }
 
+interface Elsewhere {
+  network: "mainnet" | "testnet";
+  jobId: string;
+  provider: string;
+  agentName: string | null;
+  explorer: string;
+}
+
 interface Progress {
   team: boolean;
   hired: Counted[];
+  elsewhere: Elsewhere[];
+  /** Different agents here and on other marketplaces, and whether they span two (null: the chain cannot say). */
+  across: { agents: number; twoMarketplaces: boolean | null };
   listed: number;
   best: { agentId: string; name: string | null; rung: number; rungName: string } | null;
 }
@@ -65,6 +76,11 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
       setP({
         team: Boolean(q?.data?.team),
         hired: (q?.data?.agentsHired ?? []) as Counted[],
+        elsewhere: (q?.data?.elsewhere ?? []) as Elsewhere[],
+        across: {
+          agents: Number(q?.data?.across?.agents ?? q?.data?.agentsHired?.length ?? 0),
+          twoMarketplaces: q?.data?.across?.twoMarketplaces ?? null,
+        },
         listed: Number(q?.data?.agentsListed ?? 0),
         best: q?.data?.bestAgent ?? null,
       });
@@ -85,9 +101,13 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
   }, [address, read]);
 
   const hiredHere = p && !p.team ? p.hired.length : 0;
+  const hiredElsewhere = p && !p.team ? p.elsewhere.length : 0;
+  // Different agents on every marketplace the chain shows: here, and jobs funded elsewhere through BNB Chain's shared escrow.
+  const hiredAll = p && !p.team ? p.across.agents : 0;
   const built = Boolean(p && p.listed > 0);
   // Two of the three can be here; the third has to be on another shortlisted marketplace.
   const roomHere = campaign.hires - (campaign.marketplaces - 1);
+  const hiresDone = hiredAll >= campaign.hires && p?.across.twoMarketplaces === true;
   const hiredCategories = new Set((p?.hired ?? []).map((h) => h.category));
 
   return (
@@ -99,12 +119,13 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
         {address && p ? (
           <>
             <p className="x-quest__count">
-              <span className="x-mono">{Math.min(hiredHere, campaign.hires)}</span> of {campaign.hires} different agents hired here
+              <span className="x-mono">{Math.min(hiredAll, campaign.hires)}</span> of {campaign.hires} different agents hired
+              {hiredElsewhere ? ` (${hiredHere} here, ${hiredElsewhere} on other marketplaces)` : hiredHere ? " here" : ""}
               {built ? ", your agent listed" : ""}
             </p>
             <div className="x-quest__meter" aria-hidden="true">
               {Array.from({ length: campaign.hires + 1 }, (_, i) => (
-                <span key={i} className={(i < campaign.hires ? i < hiredHere : built) ? "x-quest__seg x-quest__seg--on" : "x-quest__seg"} />
+                <span key={i} className={(i < campaign.hires ? i < hiredAll : built) ? "x-quest__seg x-quest__seg--on" : "x-quest__seg"} />
               ))}
             </div>
             {p.team ? <p className="x-quest__note">This is one of MANDATE&apos;s own wallets, so it never counts toward the campaign.</p> : null}
@@ -148,8 +169,8 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
             </a>
           </div>
         </li>
-        <li className={hiredHere >= roomHere ? "x-quest__step x-quest__step--done" : "x-quest__step"}>
-          <p className="x-quest__n x-mono">{hiredHere >= roomHere ? <Check size={14} strokeWidth={3} aria-label="Done here" /> : 2}</p>
+        <li className={hiresDone || hiredHere >= roomHere ? "x-quest__step x-quest__step--done" : "x-quest__step"}>
+          <p className="x-quest__n x-mono">{hiresDone || hiredHere >= roomHere ? <Check size={14} strokeWidth={3} aria-label={hiresDone ? "Done" : "Done here"} /> : 2}</p>
           <div>
             <h2 className="x-quest__label">
               Hire {campaign.hires} different agents, on at least {campaign.marketplaces} marketplaces
@@ -177,6 +198,25 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {p && p.elsewhere.length ? (
+              <ul className="x-quest__hired">
+                {p.elsewhere.map((h) => (
+                  <li key={`${h.network}:${h.jobId}`} className="x-quest__done">
+                    <Check size={13} strokeWidth={3} aria-hidden="true" /> {h.agentName ?? `the agent at ${h.provider.slice(0, 6)}…${h.provider.slice(-4)}`}, on another marketplace
+                    {h.network === "testnet" ? " (testnet)" : ""}
+                    {" · "}
+                    <a className="x-link x-mono" href={h.explorer} target="_blank" rel="noreferrer">
+                      job {h.jobId}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {p && !p.team && hiredAll >= campaign.hires && p.across.twoMarketplaces === null ? (
+              <p className="x-quest__note">
+                These were all on other marketplaces, and the chain does not say whether on one or several. BNB Chain counts that from its own records.
+              </p>
             ) : null}
           </div>
         </li>
@@ -245,8 +285,10 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
 
       <NeedHelp />
       <p className="x-quest__fine">
-        Counted here from hires your own wallet paid on MANDATE, once the chain confirms them, each of a different agent and never of an agent you own. Calls MANDATE
-        pays for do not count. Hires on other marketplaces, and your agent&apos;s own checks, are counted by BNB Chain from the chain; its determination is final.
+        Counted here from hires your own wallet paid on MANDATE once the chain confirms them, and from every job your wallet funded through BNB Chain&apos;s
+        ERC-8183 escrow on another marketplace, on mainnet or testnet. Each counts once per agent, never for an agent you own, and calls MANDATE pays for do not
+        count. Hires paid per call or through another marketplace&apos;s own contract are not visible here; BNB Chain counts those and your agent&apos;s checks
+        from the chain, and its determination is final.
         The campaign runs to {new Date(campaign.ends).toUTCString().slice(5, 16)}, 12:00 UTC. The same record answers at{" "}
         <span className="x-mono">/api/v1/quest/{"{address}"}</span>.
       </p>

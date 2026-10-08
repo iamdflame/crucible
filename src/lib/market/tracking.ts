@@ -23,7 +23,10 @@ import { placeAgent, readMarketSets } from "@/lib/rung";
 import { jobsOfClient, type EscrowJob } from "@/lib/escrow/jobs";
 import { ESCROW } from "@/lib/escrow/contracts";
 import type { PaidCallRecord } from "@/lib/market/paid-calls";
-import { CAMPAIGN_ENDS } from "@/lib/campaign/rules";
+import { CAMPAIGN_ENDS, CAMPAIGN_STARTS } from "@/lib/campaign/rules";
+import { TESTNET_EXPLORER } from "@/lib/campaign/testnet";
+import { escrowQuoteMap } from "@/lib/data/probes";
+import { warm } from "@/lib/data/snapshots";
 
 export type HireKind = "paid-call" | "market-job" | "escrow-job";
 
@@ -274,6 +277,97 @@ export function countedHires(hires: HireRow[], owned: string[]): CountedHire[] {
   return [...byAgent.values()];
 }
 
+/** A job this wallet funded through BNB Chain's ERC-8183 escrow that was not opened here: a hire on another marketplace, on either network. */
+export interface ElsewhereJob {
+  network: "mainnet" | "testnet";
+  jobId: string;
+  provider: string;
+  tx: string;
+  at: string;
+}
+
+export interface ElsewhereHire extends ElsewhereJob {
+  /** The agent, when the provider wallet runs exactly one agent we list. Null on testnet, or when it runs several. */
+  agentId: string | null;
+  agentName: string | null;
+  explorer: string;
+}
+
+const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/**
+ * Different agents hired across marketplaces, as far as the chain shows: the
+ * hires counted here, plus each job funded elsewhere through the shared
+ * escrow, one per agent. The escrow names the agent's wallet, not the agent,
+ * so a wallet that runs several agents counts once and the total is a floor.
+ * The wallet's own agents are left out, as the rules leave them out. Pure, for
+ * tests.
+ */
+export function acrossMarketplaces(
+  here: CountedHire[],
+  jobs: ElsewhereJob[],
+  opts: { wallet: string; owned: string[]; agentsOfProvider: (provider: string) => { tokenId: string; name: string | null }[] },
+): { elsewhere: ElsewhereHire[]; agents: number; twoMarketplaces: boolean | null } {
+  const seen = new Set(here.map((h) => h.agentId));
+  const mine = new Set(opts.owned);
+  const elsewhere: ElsewhereHire[] = [];
+  for (const j of [...jobs].sort((a, b) => a.at.localeCompare(b.at))) {
+    if (j.provider.toLowerCase() === opts.wallet.toLowerCase()) continue;
+    const agents = j.network === "mainnet" ? opts.agentsOfProvider(j.provider.toLowerCase()) : [];
+    if (agents.some((a) => mine.has(a.tokenId))) continue;
+    const one = agents.length === 1 ? agents[0]! : null;
+    const key = one ? one.tokenId : `${j.network}:${j.provider.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    elsewhere.push({
+      ...j,
+      agentId: one?.tokenId ?? null,
+      agentName: one?.name ?? (agents.length > 1 ? `one of ${agents.length} agents run by ${shortAddress(j.provider)}` : null),
+      explorer: `${j.network === "testnet" ? TESTNET_EXPLORER : "https://bscscan.com"}/tx/${j.tx}`,
+    });
+  }
+  // MANDATE plus any other is two. With none here, the chain cannot say whether the others were one marketplace or several.
+  const twoMarketplaces = here.length > 0 ? elsewhere.length > 0 : elsewhere.length > 1 ? null : false;
+  return { elsewhere, agents: here.length + elsewhere.length, twoMarketplaces };
+}
+
+/** Jobs this wallet funded during the campaign that MANDATE did not open, on mainnet and on testnet. */
+async function elsewhereJobsOf(wallet: string): Promise<ElsewhereJob[]> {
+  if (!pg || !(await ensureTables().catch(() => false))) return [];
+  const w = wallet.toLowerCase();
+  type Row = { job_id: string; provider: string; tx: string; at: Date | string };
+  const [main, test] = await Promise.all([
+    pg`select k.job_id, k.provider, k.tx, k.at from kernel_jobs k
+       where k.client = ${w} and k.at >= ${CAMPAIGN_STARTS} and k.at <= ${CAMPAIGN_ENDS}
+       and not exists (select 1 from escrow_jobs e where e.job_id = k.job_id)`.catch(() => []) as Promise<Row[]>,
+    pg`select job_id, provider, tx, at from testnet_jobs
+       where client = ${w} and at >= ${CAMPAIGN_STARTS} and at <= ${CAMPAIGN_ENDS}`.catch(() => []) as Promise<Row[]>,
+  ]);
+  const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
+  return [
+    ...main.map((r) => ({ network: "mainnet" as const, jobId: r.job_id, provider: r.provider, tx: r.tx, at: iso(r.at) })),
+    ...test.map((r) => ({ network: "testnet" as const, jobId: r.job_id, provider: r.provider, tx: r.tx, at: iso(r.at) })),
+  ];
+}
+
+/** Which listed agents a provider wallet runs: by registration owner, and by the wallet each seller's own quote names. */
+async function providerDirectory(): Promise<(provider: string) => { tokenId: string; name: string | null }[]> {
+  await warm(["probe", "escrow-quotes"]).catch(() => undefined);
+  const by = new Map<string, Map<string, string | null>>();
+  const add = (p: string | null | undefined, tokenId: string, name: string | null) => {
+    if (!p) return;
+    const k = p.toLowerCase();
+    const m = by.get(k) ?? new Map<string, string | null>();
+    m.set(tokenId, name);
+    by.set(k, m);
+  };
+  const agents = getAgentIndex().agents;
+  for (const a of agents) add(a.owner, a.tokenId, a.name);
+  const names = new Map(agents.map((a) => [a.tokenId, a.name]));
+  for (const [tokenId, q] of Object.entries(escrowQuoteMap())) add(q.provider, tokenId, names.get(tokenId) ?? null);
+  return (provider) => [...(by.get(provider.toLowerCase()) ?? new Map()).entries()].map(([tokenId, name]) => ({ tokenId, name }));
+}
+
 export interface QuestProgress {
   wallet: string;
   team: boolean;
@@ -297,11 +391,23 @@ export interface QuestProgress {
    * marketplaces, and the build's own checks, are counted by BNB Chain.
    */
   here: { hires: number; agentListed: boolean };
+  /** Jobs this wallet funded on other marketplaces through BNB Chain's shared escrow, mainnet or testnet, one per agent. */
+  elsewhere: ElsewhereHire[];
+  /**
+   * The campaign's hire count as far as the chain shows it: different agents
+   * here and elsewhere, and whether they span two marketplaces (null when the
+   * chain cannot say). Hires paid per call or through a marketplace's own
+   * contract elsewhere are not visible here; BNB Chain counts those.
+   */
+  across: { agents: number; here: number; elsewhere: number; twoMarketplaces: boolean | null };
 }
 
 export async function questOf(wallet: string): Promise<QuestProgress> {
-  const [h, owned] = await Promise.all([hiresOf(wallet), agentsOf(wallet)]);
+  const [h, owned, jobs, directory] = await Promise.all([hiresOf(wallet), agentsOf(wallet), elsewhereJobsOf(wallet), providerDirectory()]);
   const agentsHired = countedHires(h.hires, owned.map((a) => a.agentId));
+  const across = h.team
+    ? { elsewhere: [], agents: 0, twoMarketplaces: false }
+    : acrossMarketplaces(agentsHired, jobs, { wallet, owned: owned.map((a) => a.agentId), agentsOfProvider: directory });
   const hired = Object.fromEntries(CATEGORIES.map((c) => [c, h.byCategory[c] > 0])) as Record<Category, boolean>;
   const allFourHired = CATEGORIES.every((c) => hired[c]);
   const listed = owned.filter((a) => a.rung >= 1);
@@ -318,5 +424,7 @@ export async function questOf(wallet: string): Promise<QuestProgress> {
     ratingsGiven: h.ratings.length,
     complete: allFourHired && listed.length > 0 && !h.team,
     here: { hires: h.team ? 0 : agentsHired.length, agentListed: listed.length > 0 },
+    elsewhere: across.elsewhere,
+    across: { agents: across.agents, here: h.team ? 0 : agentsHired.length, elsewhere: across.elsewhere.length, twoMarketplaces: across.twoMarketplaces },
   };
 }

@@ -14,3 +14,6 @@ export const QUALIFIES = [
 
 /** When Set and Earn closes (the campaign page): 5 November 2026, 12:00 UTC. */
 export const CAMPAIGN_ENDS = "2026-11-05T12:00:00Z";
+
+/** When it opened: 1 October 2026, 12:00 UTC. A hire before this is not a campaign hire. */
+export const CAMPAIGN_STARTS = "2026-10-01T12:00:00Z";

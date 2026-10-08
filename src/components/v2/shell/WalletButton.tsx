@@ -25,13 +25,13 @@ export default function WalletButton() {
   const { address, ready, available, chainId, balanceWei, connect, connectError, switchChain, disconnect } = useWallet();
   const ref = useRef<HTMLDetailsElement>(null);
   const [copied, setCopied] = useState(false);
-  // Set and Earn, as far as this site can count it: different agents this wallet hired here. Read when the panel opens.
+  // Set and Earn, as far as the chain shows it: different agents this wallet hired here and on other marketplaces. Read when the panel opens.
   const [quest, setQuest] = useState<{ hires: number; of: number } | null>(null);
   const readQuest = () => {
     if (!address) return;
     fetch(`/api/v1/quest/${address}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => setQuest({ hires: Number(j?.data?.here?.hires ?? 0), of: Number(j?.data?.campaign?.hires ?? 3) }))
+      .then((j) => setQuest({ hires: Number(j?.data?.across?.agents ?? j?.data?.here?.hires ?? 0), of: Number(j?.data?.campaign?.hires ?? 3) }))
       .catch(() => undefined);
   };
 
@@ -147,7 +147,7 @@ export default function WalletButton() {
         <a className="m-wallet__quest" href="/quest">
           <span className="m-label">Set and Earn</span>
           <span>
-            {quest ? `${Math.min(quest.hires, quest.of)} of ${quest.of} different agents hired here` : "Your progress"}
+            {quest ? `${Math.min(quest.hires, quest.of)} of ${quest.of} different agents hired` : "Your progress"}
             <span aria-hidden="true"> →</span>
           </span>
         </a>

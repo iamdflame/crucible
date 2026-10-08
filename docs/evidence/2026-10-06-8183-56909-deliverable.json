@@ -1,0 +1,13 @@
+{
+  "jobId": "56909",
+  "status": "SUBMITTED",
+  "url": "https://agents.chainhelix.io/rebalancer/erc8183/job/56909/response",
+  "httpStatus": 200,
+  "bytes": 853,
+  "sha256": "0xb5bcce97d1816fbba469c928ef6b15244c4c1bafda259f9f8519d13000cf3d4b",
+  "keccak256": "0xe6607fd1eb10394543f85692ee6acd5344e0edde200aab72b8aa4da599f59dd5",
+  "onChain": "0xe6607fd1eb10394543f85692ee6acd5344e0edde200aab72b8aa4da599f59dd5",
+  "hashMatches": "keccak256",
+  "body": "{\"chain_id\":56,\"contracts\":{\"commerce\":\"0xEa4DAa3100A767e86FDed867729ae7446476EBA6\",\"policy\":\"0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5\",\"router\":\"0x51895229E12F9876011789B04f8698af06cCD6DA\"},\"job_id\":56909,\"metadata\":{\"built_with\":\"https://github.com/bnb-chain/bnbagent-studio\",\"generator\":\"rebalancer\",\"job_id\":56909},\"response\":{\"content\":\"{\\\"category\\\":\\\"rebalancing\\\",\\\"ok\\\":true,\\\"portfolioUsd\\\":80000,\\\"driftThresholdPct\\\":1,\\\"weights\\\":[{\\\"symbol\\\":\\\"BTC\\\",\\\"currentWeightPct\\\":75,\\\"targetWeightPct\\\":50,\\\"driftPct\\\":25},{\\\"symbol\\\":\\\"ETH\\\",\\\"currentWeightPct\\\":25,\\\"targetWeightPct\\\":50,\\\"driftPct\\\":-25}],\\\"trades\\\":[{\\\"symbol\\\":\\\"BTC\\\",\\\"side\\\":\\\"sell\\\",\\\"amount\\\":0.33333333,\\\"usd\\\":20000},{\\\"symbol\\\":\\\"ETH\\\",\\\"side\\\":\\\"buy\\\",\\\"amount\\\":10,\\\"usd\\\":20000}],\\\"tradesNeeded\\\":true,\\\"residualUsd\\\":0}\",\"content_type\":\"text/plain\"},\"version\":1}",
+  "at": "2026-10-06T05:12:32.497Z"
+}
