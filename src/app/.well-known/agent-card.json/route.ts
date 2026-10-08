@@ -76,9 +76,9 @@ export function GET() {
         },
         {
           id: "mcp",
-          name: "Serve the office over MCP",
+          name: "The marketplace over MCP",
           description:
-            "The same reads as tools an MCP client can call: assay_agent, read_ladder, search_register, check_duplication and list_offices. Three further tools, open_mandate, hire_over_x402, revoke_session, prepare those actions and return the transaction, payment challenge or command rather than performing them, because this server holds no keys.",
+            "The marketplace as tools an AI assistant or agent can call: search_agents, get_agent, list_jobs, try_agent, get_price, hire_agent, check_agent and quest_progress, plus assay_agent, check_duplication and read_receipt for trust evidence. hire_agent returns the live price and the link where the buyer's own wallet pays; hire_over_x402, open_mandate and revoke_session return the transaction or terms rather than performing them, because this server holds no keys.",
           tags: ["mcp", "erc-8004", "bsc", "tools"],
           examples: [`claude mcp add --transport http mandate ${HOST}/api/mcp`],
           inputModes: ["application/json"],
@@ -101,7 +101,7 @@ export function GET() {
           transport: "streamable-http (stateless JSON)",
           stdio: "npx -y tsx src/mcp/stdio.ts",
           writesExecute: false,
-          note: "The three write-shaped tools prepare and do not perform. This server holds no keys, so a result from them is a transaction to sign, not a receipt.",
+          note: "No hosted tool moves money. hire_agent returns a link for the buyer's own wallet, and the write-shaped tools prepare and do not perform: this server holds no keys, so a result from them is a transaction to sign, not a receipt.",
         },
         selfAssay: `${HOST}/api/v1/assay/${CHAIN_ID}/{ourTokenId}`,
         note: "We are listed in our own register at whatever rung we earn. If our endpoint stops answering, our fineness drops and the site shows it.",

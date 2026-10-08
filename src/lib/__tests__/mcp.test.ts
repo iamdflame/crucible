@@ -3,23 +3,27 @@ import { callTool, TOOL_SPECS, TOOLS } from "@/mcp/tools";
 import { CATEGORIES } from "@/lib/config";
 
 /**
- * The MCP surface is the office as an agent reaches it, and the thing that
- * matters most about it is what it refuses to do.
+ * The MCP surface is the marketplace as an agent reaches it, and the thing
+ * that matters most about it is what it refuses to do.
  *
- * Three tools are named for actions, opening a mandate, hiring, revoking,
- * that this server cannot perform, because performing them needs keys it does
- * not hold. Each returns what the action would take instead. A regression that
+ * Four tools are named for actions, hiring, paying for a call, opening a
+ * mandate, revoking, that this server cannot perform, because performing them
+ * needs keys it does not hold. Each returns what the action would take instead. A regression that
  * made one of them report success would be exactly the unverifiable claim this
  * register exists to strike out, so it is asserted here rather than trusted to
  * the tool descriptions.
  */
 
-const WRITE_TOOLS = ["open_mandate", "hire_over_x402", "revoke_session", "hire_erc8183"] as const;
+const WRITE_TOOLS = ["hire_agent", "hire_over_x402", "open_mandate", "revoke_session"] as const;
 const READ_TOOLS = [
-  "list_offices",
+  "search_agents",
+  "get_agent",
+  "list_jobs",
+  "try_agent",
+  "get_price",
+  "check_agent",
+  "quest_progress",
   "assay_agent",
-  "read_ladder",
-  "search_register",
   "check_duplication",
   "read_receipt",
 ] as const;

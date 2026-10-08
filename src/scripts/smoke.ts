@@ -251,6 +251,31 @@ async function main() {
     record("/api/v1/diagnose", false, `expected JSON, got ${diag.status}`);
   }
 
+  // The marketplace as data, which the MCP tools read: as many ready to hire as the page counts.
+  const market = await get(`/api/v1/market?view=ready&limit=3`);
+  try {
+    const j = JSON.parse(market.text) as { ok: boolean; data?: { ready: number; agents: { hireable: boolean; hire: string }[] } };
+    const good = j.ok && (j.data?.ready ?? 0) >= 25 && (j.data?.agents ?? []).every((a) => a.hireable && a.hire.includes("/agents/"));
+    record("/api/v1/market: at least 25 ready, each with a hire link", good, good ? `${j.data!.ready} ready` : market.text.slice(0, 160));
+  } catch {
+    record("/api/v1/market", false, `expected JSON, got ${market.status}`);
+  }
+
+  // An AI assistant connecting over MCP gets the marketplace tools first.
+  try {
+    const res = await fetch(`${BASE}/api/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "user-agent": "mandate-smoke" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      signal: AbortSignal.timeout(TIMEOUT),
+    });
+    const names = (((await res.json()) as { result?: { tools?: { name: string }[] } }).result?.tools ?? []).map((t) => t.name);
+    const good = names[0] === "search_agents" && names.includes("hire_agent") && names.includes("quest_progress");
+    record("/api/mcp: the marketplace tools come first", good, good ? `${names.length} tools` : names.join(", ").slice(0, 160));
+  } catch (e) {
+    record("/api/mcp", false, (e as Error).message.slice(0, 120));
+  }
+
   const width = Math.max(...checks.map((c) => c.name.length));
   for (const c of checks) console.log(`${c.ok ? "PASS" : "FAIL"}  ${c.name.padEnd(width)}  ${c.detail}`);
   const failed = checks.filter((c) => !c.ok).length;
