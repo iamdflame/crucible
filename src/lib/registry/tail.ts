@@ -230,7 +230,10 @@ export async function scanMints(opts: { budgetMs: number; maxChunks?: number }):
         ) as t(token_id, owner, block, tx)
         on conflict (token_id) do update set
           block = coalesce(registry_agents.block, excluded.block),
-          tx = coalesce(registry_agents.tx, excluded.tx)
+          tx = coalesce(registry_agents.tx, excluded.tx),
+          -- A token someone listed before the scan reached it: the mint goes into the record the site reads, and the row is marked changed so warm instances re-read it.
+          record = case when registry_agents.tx is null then registry_agents.record || jsonb_build_object('registeredTx', excluded.tx, 'registeredBlock', excluded.block) else registry_agents.record end,
+          indexed_at = case when registry_agents.tx is null then now() else registry_agents.indexed_at end
       `;
     }
     minted += mints.length;
@@ -392,17 +395,22 @@ export function warmRegistry(): Promise<void> {
       await ensureTables();
       const since = loadedAt ?? "1970-01-01T00:00:00Z";
       const rows = (await pg!`
-        select record, indexed_at from registry_agents
+        select record, tx, block, indexed_at from registry_agents
         where indexed_at > ${since}
           and coalesce((record->>'resolved')::boolean, false) = true
           and (category is not null or source in ('list', 'view'))
         order by indexed_at asc
         limit 20000
-      `) as { record: IndexedAgent & { resolved?: boolean }; indexed_at: Date | string }[];
+      `) as { record: IndexedAgent & { resolved?: boolean }; tx: string | null; block: string | number | null; indexed_at: Date | string }[];
       if (rows.length) {
         const next = new Map(registryExtras().rows);
         for (const r of rows) {
           const { resolved: _resolved, ...agent } = r.record;
+          // The mint as the row's own columns hold it, when the record was written before the mint was found.
+          if (!agent.registeredTx && r.tx) {
+            agent.registeredTx = r.tx;
+            agent.registeredBlock = r.block === null ? null : Number(r.block);
+          }
           next.set(agent.tokenId, agent);
         }
         const newest = rows[rows.length - 1]!.indexed_at;
