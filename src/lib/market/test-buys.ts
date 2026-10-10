@@ -14,7 +14,7 @@
 
 import type { Hex } from "viem";
 import { payAndCall } from "@/lib/x402/pay-server";
-import { recordPaidCall, toRecord, listPaidCalls, outcomes } from "@/lib/market/paid-calls";
+import { recordPaidCall, toRecord, listPaidCalls, outcomes, type PaidCallRecord } from "@/lib/market/paid-calls";
 import { confirmSettlement } from "@/lib/market/settlement";
 import { listings } from "@/lib/market/listing";
 import { hirePath } from "@/lib/market/hire-law";
@@ -33,6 +33,29 @@ const RETRY_AFTER_MS = 48 * 3_600_000;
 /** After three failures in a row, once a week. */
 const RETRY_SLOW_MS = 7 * 24 * 3_600_000;
 
+/**
+ * How long to wait before paying a seller pulled for a failed paid call
+ * again, or null when it is not paid again on a timer at all. Pure, for tests.
+ *
+ * A seller that took the payment and delivered nothing is not paid on a
+ * timer like one that refused: Agripinaa's six agents took 0.05 USDT ten
+ * times between 8 and 10 Oct, each time failing to read their own receipt,
+ * and emptied the trial pool's top-up. So any such failure waits a week, and
+ * three in a row stop the automatic retests: a person retests by hand once
+ * something about the seller changes. Failures we caused are left out.
+ */
+export function retestWait(calls: PaidCallRecord[], tokenId: string): number | null {
+  let streak = 0;
+  let tookAndFailed = 0;
+  for (const c of calls.filter((x) => x.tokenId === tokenId && x.fault !== "ours").sort((a, b) => b.at.localeCompare(a.at))) {
+    if (c.paid && c.delivered) break;
+    streak += 1;
+    if (c.paid) tookAndFailed += 1;
+  }
+  if (tookAndFailed >= 3) return null;
+  return tookAndFailed > 0 || streak >= 3 ? RETRY_SLOW_MS : RETRY_AFTER_MS;
+}
+
 export async function testBuys(opts: { budgetMs: number }): Promise<string> {
   const raw = process.env.AGENT_A_KEY;
   if (!raw) return "no trial pool key on this deployment";
@@ -43,15 +66,6 @@ export async function testBuys(opts: { budgetMs: number }): Promise<string> {
   let spent = calls.filter((c) => c.note?.startsWith("Daily test purchase") && Date.parse(c.at) > since).reduce((s, c) => s + BigInt(c.amount ?? "0"), 0n);
   const counts = await hireCounts().catch(() => null);
   const past = outcomes(calls);
-  // Failures in a row, newest first, the seller's own (a failure we caused is not counted against it).
-  const streak = (id: string) => {
-    let n = 0;
-    for (const c of calls.filter((x) => x.tokenId === id && x.fault !== "ours").sort((a, b) => b.at.localeCompare(a.at))) {
-      if (c.paid && c.delivered) break;
-      n += 1;
-    }
-    return n;
-  };
   const due = listings(counts?.byTokenId, counts?.settled).filter((l) => {
     if (isOurs(l) || !l.quote?.payable) return false;
     const last = calls.find((c) => c.tokenId === l.tokenId);
@@ -61,12 +75,16 @@ export async function testBuys(opts: { budgetMs: number }): Promise<string> {
       Pulled for a failed paid call, and otherwise ready: answering now, with
       a price we can pay. It was never paid again, so it could never come
       back (16 sellers by 6 Oct). It is tried again after two days; after
-      three failures in a row, once a week.
+      three failures in a row, or any that took the money, once a week (see
+      retestWait). The wait runs from our last attempt of any kind: one that
+      failed on our side, an input we could not supply, used to leave the
+      clock where it was, and Brain on BNB's grid planner was asked twelve
+      times in three days.
     */
     const o = past.get(l.tokenId);
-    if (!o?.lastFailed || !o.lastAt || l.liveness !== "live") return false;
-    const wait = streak(l.tokenId) >= 3 ? RETRY_SLOW_MS : RETRY_AFTER_MS;
-    return Date.now() - Date.parse(o.lastAt) > wait;
+    if (!o?.lastFailed || !last || l.liveness !== "live") return false;
+    const wait = retestWait(calls, l.tokenId);
+    return wait !== null && Date.now() - Date.parse(last.at) > wait;
   });
   const out: string[] = [];
   for (const l of due) {
