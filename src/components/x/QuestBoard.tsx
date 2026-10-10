@@ -7,6 +7,7 @@ import HireDrawer, { type HireOffer } from "@/components/x/HireDrawer";
 import OpenInWallet from "@/components/x/OpenInWallet";
 import NeedHelp from "@/components/x/NeedHelp";
 import HirePack, { type PackAgent } from "@/components/x/HirePack";
+import TestnetPack, { type TestnetPackAgent } from "@/components/x/TestnetPack";
 import { useWallet } from "@/lib/chain/wallet";
 
 export interface QuestCard {
@@ -23,6 +24,7 @@ interface Counted {
   agentName: string | null;
   category: string | null;
   tx: string | null;
+  network?: "testnet";
 }
 
 interface Elsewhere {
@@ -62,7 +64,18 @@ const short = (tx: string) => `${tx.slice(0, 8)}…${tx.slice(-4)}`;
  * here, and its own agents listed here. Re-read while the page is open, since
  * a hire is confirmed a few seconds after it is answered.
  */
-export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard[]; campaign: Campaign; pack?: PackAgent[] | null }) {
+export default function QuestBoard({
+  cards,
+  campaign,
+  pack,
+  testnetPack,
+}: {
+  cards: QuestCard[];
+  campaign: Campaign;
+  pack?: PackAgent[] | null;
+  /** The same two agents under their testnet identities, hired free in test $U. */
+  testnetPack?: TestnetPackAgent[] | null;
+}) {
   const { address, available, connect, connectError } = useWallet();
   const [p, setP] = useState<Progress | null>(null);
 
@@ -114,6 +127,7 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
     <div className="x-quest">
       {/* First on the screen, because most people arrive here to hire: two of the three, in one confirmation. */}
       {pack && pack.length >= 2 ? <HirePack agents={pack} /> : null}
+      {testnetPack && testnetPack.length >= 2 ? <TestnetPack agents={testnetPack} /> : null}
 
       <div className="x-quest__bar" role="status">
         {address && p ? (
@@ -190,7 +204,7 @@ export default function QuestBoard({ cards, campaign, pack }: { cards: QuestCard
                     {h.tx ? (
                       <>
                         {" · "}
-                        <a className="x-link x-mono" href={`https://bscscan.com/tx/${h.tx}`} target="_blank" rel="noreferrer">
+                        <a className="x-link x-mono" href={`https://${h.network === "testnet" ? "testnet." : ""}bscscan.com/tx/${h.tx}`} target="_blank" rel="noreferrer">
                           {short(h.tx)}
                         </a>
                       </>

@@ -36,6 +36,7 @@ import { runConformance } from "@/lib/conformance/run";
 import { warmOutcomes } from "@/lib/market/hire-law";
 import { refreshEscrowQuotes } from "@/lib/census/quotes";
 import { watchTestnet } from "@/lib/campaign/testnet";
+import { sweepTestnet } from "@/lib/escrow/testnet-jobs";
 
 export interface Job {
   name: string;
@@ -304,12 +305,22 @@ export const JOBS: Job[] = [
     run: (budgetMs = 48_000) => refreshEscrowQuotes({ budgetMs }),
   },
   {
-    // Jobs funded on BNB's testnet escrow, so a buyer's Set and Earn progress here counts the hires they made on testnet marketplaces too.
+    /*
+      Jobs funded on BNB's testnet escrow: indexed, so a buyer's Set and Earn
+      progress counts their testnet hires everywhere, then those funded to our
+      own agents delivered and settled. Every five minutes, since a testnet
+      job, like a mainnet one, must be submitted within 30 minutes.
+    */
     name: "testnet-jobs",
-    everyMinutes: 10,
-    budgetMs: 40_000,
+    everyMinutes: 5,
+    budgetMs: 55_000,
     afterResponse: true,
-    run: (budgetMs = 38_000) => watchTestnet({ budgetMs }),
+    run: async (budgetMs = 53_000) => {
+      const started = Date.now();
+      const indexed = await watchTestnet({ budgetMs: Math.min(20_000, budgetMs / 2) });
+      const swept = await sweepTestnet({ budgetMs: budgetMs - (Date.now() - started) });
+      return `${indexed}; ${swept}`;
+    },
   },
   {
     name: "test-buys",

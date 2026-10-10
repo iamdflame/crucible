@@ -85,3 +85,21 @@ describe("our agents as sellers in BNB's standard hire", () => {
     expect(/[^\x00-\x7f]/.test(served)).toBe(false);
   });
 });
+
+describe("our agents as sellers on BNB Smart Chain testnet", () => {
+  it("quote in test $U on the testnet kernel, and an SDK buyer checking for chain 97 accepts it", async () => {
+    const { ESCROW_TESTNET } = await import("../escrow/contracts");
+    const t = { ...terms(), chainId: 97, commerce: ESCROW_TESTNET.commerce, token: ESCROW_TESTNET.paymentToken };
+    const q = (await quoteAsSeller(reference.request, t)) as unknown as SdkQuote & { verifying_contract: string; chain_id: number };
+    expect(q.chain_id).toBe(97);
+    expect(q.verifying_contract).toBe(ESCROW_TESTNET.commerce);
+    const r = await checkSdkQuote(q, { chainId: 97, commerce: ESCROW_TESTNET.commerce, token: ESCROW_TESTNET.paymentToken, signers: [account.address], now: reference.now + 10 });
+    expect("refused" in r ? r.refused : null).toBeNull();
+    // A mainnet buyer would refuse it: a testnet quote cannot be spent on mainnet.
+    const main = await checkSdkQuote(q, { chainId: 56, commerce: COMMERCE, token: TOKEN, signers: [account.address], now: reference.now + 10 });
+    expect("refused" in main).toBe(true);
+    // And the job description built from it recovers to the agent, as our testnet watcher reads it.
+    const read = await readSignedDescription(jobDescription(q));
+    expect(read && "signer" in read ? read.signer : null).toBe(account.address);
+  });
+});

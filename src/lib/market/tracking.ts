@@ -25,6 +25,7 @@ import { ESCROW } from "@/lib/escrow/contracts";
 import type { PaidCallRecord } from "@/lib/market/paid-calls";
 import { CAMPAIGN_ENDS, CAMPAIGN_STARTS } from "@/lib/campaign/rules";
 import { TESTNET_EXPLORER } from "@/lib/campaign/testnet";
+import { testnetJobsOfClient } from "@/lib/escrow/testnet-jobs";
 import { escrowQuoteMap } from "@/lib/data/probes";
 import { warm } from "@/lib/data/snapshots";
 
@@ -257,6 +258,8 @@ export interface CountedHire {
   kind: HireKind;
   tx: string | null;
   at: string | null;
+  /** Set for a hire made here on BNB Smart Chain testnet, whose agent id is its testnet identity ("97:<id>") and whose transaction is on testnet. */
+  network?: "testnet";
 }
 
 /**
@@ -340,14 +343,35 @@ async function elsewhereJobsOf(wallet: string): Promise<ElsewhereJob[]> {
     pg`select k.job_id, k.provider, k.tx, k.at from kernel_jobs k
        where k.client = ${w} and k.at >= ${CAMPAIGN_STARTS} and k.at <= ${CAMPAIGN_ENDS}
        and not exists (select 1 from escrow_jobs e where e.job_id = k.job_id)`.catch(() => []) as Promise<Row[]>,
-    pg`select job_id, provider, tx, at from testnet_jobs
-       where client = ${w} and at >= ${CAMPAIGN_STARTS} and at <= ${CAMPAIGN_ENDS}`.catch(() => []) as Promise<Row[]>,
+    // Testnet jobs opened here with our own agents are hires here, counted separately; the rest are elsewhere.
+    pg`select t.job_id, t.provider, t.tx, t.at from testnet_jobs t
+       where t.client = ${w} and t.at >= ${CAMPAIGN_STARTS} and t.at <= ${CAMPAIGN_ENDS}
+       and not exists (select 1 from testnet_escrow_jobs e where e.job_id = t.job_id and e.here)`.catch(() => []) as Promise<Row[]>,
   ]);
   const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
   return [
     ...main.map((r) => ({ network: "mainnet" as const, jobId: r.job_id, provider: r.provider, tx: r.tx, at: iso(r.at) })),
     ...test.map((r) => ({ network: "testnet" as const, jobId: r.job_id, provider: r.provider, tx: r.tx, at: iso(r.at) })),
   ];
+}
+
+/**
+ * Hires this wallet made here on BNB Smart Chain testnet: jobs with our own
+ * agents, opened through MANDATE, funded or further, one per agent. A testnet
+ * agent is its own ERC-8004 identity, so it counts apart from its mainnet twin.
+ */
+async function testnetHiresHere(wallet: string): Promise<CountedHire[]> {
+  const jobs = await testnetJobsOfClient(wallet).catch(() => []);
+  const byAgent = new Map<string, CountedHire>();
+  for (const j of [...jobs].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    if (!j.here || !["FUNDED", "SUBMITTED", "COMPLETED"].includes(j.status) || j.createdAt < CAMPAIGN_STARTS) continue;
+    const id = `97:${j.tokenId}`;
+    if (byAgent.has(id)) continue;
+    const name = j.mainnetTokenId ? findAgent(j.mainnetTokenId)?.name ?? null : null;
+    const category = j.mainnetTokenId ? findAgent(j.mainnetTokenId)?.category ?? null : null;
+    byAgent.set(id, { agentId: id, agentName: `${name ?? j.slug} (testnet)`, category, kind: "escrow-job", tx: j.fundedTx ?? j.submitTx, at: j.createdAt, network: "testnet" });
+  }
+  return [...byAgent.values()];
 }
 
 /** Which listed agents a provider wallet runs: by registration owner, and by the wallet each seller's own quote names. */
@@ -403,8 +427,8 @@ export interface QuestProgress {
 }
 
 export async function questOf(wallet: string): Promise<QuestProgress> {
-  const [h, owned, jobs, directory] = await Promise.all([hiresOf(wallet), agentsOf(wallet), elsewhereJobsOf(wallet), providerDirectory()]);
-  const agentsHired = countedHires(h.hires, owned.map((a) => a.agentId));
+  const [h, owned, jobs, directory, testnetHere] = await Promise.all([hiresOf(wallet), agentsOf(wallet), elsewhereJobsOf(wallet), providerDirectory(), testnetHiresHere(wallet)]);
+  const agentsHired = [...countedHires(h.hires, owned.map((a) => a.agentId)), ...(h.team ? [] : testnetHere)];
   const across = h.team
     ? { elsewhere: [], agents: 0, twoMarketplaces: false }
     : acrossMarketplaces(agentsHired, jobs, { wallet, owned: owned.map((a) => a.agentId), agentsOfProvider: directory });

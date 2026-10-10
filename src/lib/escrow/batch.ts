@@ -27,13 +27,14 @@ const request = (): Request | null => {
 /** Thrown when the wallet will not take a batch at all, so the caller falls back to the steps. */
 export class NotBatchable extends Error {}
 
-/** Whether this wallet sends atomic batches on BNB Smart Chain. Asked only once a wallet is connected. */
-export async function canBatch(address: Address): Promise<boolean> {
+/** Whether this wallet sends atomic batches on BNB Smart Chain (or its testnet, 97). Asked only once a wallet is connected. */
+export async function canBatch(address: Address, chain = 56): Promise<boolean> {
   const req = request();
   if (!req) return false;
+  const hex = `0x${chain.toString(16)}`;
   try {
-    const caps = (await req({ method: "wallet_getCapabilities", params: [address, ["0x38"]] })) as Record<string, { atomic?: { status?: string }; atomicBatch?: { supported?: boolean } }> | null;
-    const c = caps?.["0x38"] ?? caps?.["56"];
+    const caps = (await req({ method: "wallet_getCapabilities", params: [address, [hex]] })) as Record<string, { atomic?: { status?: string }; atomicBatch?: { supported?: boolean } }> | null;
+    const c = caps?.[hex] ?? caps?.[String(chain)];
     const status = c?.atomic?.status ?? (c?.atomicBatch?.supported ? "supported" : null);
     // "ready" is a wallet that will upgrade the account when the buyer agrees, in the same confirmation.
     return status === "supported" || status === "ready";
@@ -55,14 +56,14 @@ function statusCode(s: unknown): number {
  * transaction that carried it. A refusal, a revert or a timeout is thrown as
  * a sentence; a wallet that turns the method down is thrown as NotBatchable.
  */
-export async function sendBatch(address: Address, calls: { to: Address; data: Hex; value?: bigint }[], onSent?: () => void): Promise<Hash> {
+export async function sendBatch(address: Address, calls: { to: Address; data: Hex; value?: bigint }[], onSent?: () => void, chain = 56): Promise<Hash> {
   const req = request();
   if (!req) throw new NotBatchable("no wallet");
   let id: string;
   try {
     const res = (await req({
       method: "wallet_sendCalls",
-      params: [{ version: "2.0.0", chainId: "0x38", from: address, atomicRequired: true, calls: calls.map((c) => ({ to: c.to, data: c.data, value: `0x${(c.value ?? 0n).toString(16)}` })) }],
+      params: [{ version: "2.0.0", chainId: `0x${chain.toString(16)}`, from: address, atomicRequired: true, calls: calls.map((c) => ({ to: c.to, data: c.data, value: `0x${(c.value ?? 0n).toString(16)}` })) }],
     })) as string | { id: string };
     id = typeof res === "string" ? res : res.id;
   } catch (e) {

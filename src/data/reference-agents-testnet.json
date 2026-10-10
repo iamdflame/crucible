@@ -1,0 +1,30 @@
+{
+  "range-1": {
+    "tokenId": "2588",
+    "owner": "0x004c7Ae8077560c75fE5687dA39E7bE0697ddBFD",
+    "tokenURI": "data: registration, A2A with ?chain=97",
+    "tx": "0xc18a6040dc214ddf8d9572a4f58f18fa0ff58d6dec8244b2c373205aac2c3854",
+    "block": 136063703
+  },
+  "grid-1": {
+    "tokenId": "2589",
+    "owner": "0xbebF6B026e1fFC06A3c8d3C1b57b8142BF027454",
+    "tokenURI": "data: registration, A2A with ?chain=97",
+    "tx": "0xd352aa5552e9405e59b8c547671a26e55edfdca9ad515bc9313dc780ca0ccfc6",
+    "block": 136063715
+  },
+  "yield-1": {
+    "tokenId": "2590",
+    "owner": "0x7e91367c77E561F0d99C2B42925aF29cd90AE838",
+    "tokenURI": "data: registration, A2A with ?chain=97",
+    "tx": "0x8b6b9105a981e7cb98f4fbe384f10a050b551b95b4d84acfe9f210766ff2bc11",
+    "block": 136063733
+  },
+  "guard-1": {
+    "tokenId": "2591",
+    "owner": "0x81762d5214fCB6fB3b102beF9D69d13A56c1a2d0",
+    "tokenURI": "data: registration, A2A with ?chain=97",
+    "tx": "0x1f0b4cdda689480763372f324ff451e88122702eb02b0f066dbb479bfcf4f40c",
+    "block": 136063748
+  }
+}

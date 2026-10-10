@@ -203,6 +203,36 @@ const STATEMENTS: { name: string; run: () => Promise<unknown> }[] = [
     },
   },
   {
+    // Our agents' own escrowed jobs on testnet: found, delivered and settled there, as escrow_jobs does on mainnet.
+    name: "testnet_escrow_jobs",
+    run: async () => {
+      await pg!`
+        create table if not exists testnet_escrow_jobs (
+          job_id text primary key,
+          client text not null,
+          provider text not null,
+          slug text not null,
+          token_id text not null,
+          budget text not null,
+          subject text,
+          here boolean not null default false,
+          status text not null,
+          funded_tx text,
+          submit_tx text,
+          settle_tx text,
+          deliverable text,
+          deliverable_hash text,
+          expired_at bigint,
+          submitted_at bigint,
+          note text,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `;
+      await pg!`create index if not exists testnet_escrow_jobs_client on testnet_escrow_jobs (client)`;
+    },
+  },
+  {
     // An agent's Set and Earn checks, kept for half an hour: the onchain part costs dozens of archive reads.
     name: "qualifications",
     run: () => pg!`create table if not exists qualifications (token_id text primary key, payload jsonb not null, at timestamptz not null default now())`,

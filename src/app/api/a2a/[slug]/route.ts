@@ -15,6 +15,11 @@
  * The buyer anchors the quote in createJob's description, funds the job, and
  * the agent, which watches the kernel for jobs funded to it, delivers a
  * DeliverableManifest whose hash it commits on chain.
+ *
+ * With `?chain=97` the same agent sells on BNB Smart Chain testnet, under its
+ * testnet identity: the card, the quote (in test $U, on the testnet kernel),
+ * job status and delivery are all testnet's. Its testnet registration points
+ * here with that parameter, so a testnet marketplace hires it there.
  */
 
 import { after, NextResponse } from "next/server";
@@ -24,10 +29,14 @@ import { HOUSE_SERVICES } from "@/lib/house/services";
 import { hirePauseForSlug } from "@/lib/market/paused";
 import { SITE } from "@/lib/site";
 import { take, callerOf } from "@/lib/api/ratelimit";
-import { ESCROW, HOUSE_BUDGET, JOB_STATUS } from "@/lib/escrow/contracts";
+import { ESCROW, ESCROW_TESTNET, HOUSE_BUDGET, JOB_STATUS } from "@/lib/escrow/contracts";
 import { ESCROW_OPEN } from "@/lib/escrow/open";
 import { deliver, houseSigner, providerFor, readJob, recordFound } from "@/lib/escrow/jobs";
 import { quoteAsSeller, REASON, SKILL } from "@/lib/escrow/seller";
+import { deliverTestnet, readTestnetJob, recordTestnetFound, testnetDeliverableUrl, testnetProviderFor, testnetSigner } from "@/lib/escrow/testnet-jobs";
+
+/** The chain a request is for: testnet when it says `?chain=97`, mainnet otherwise. */
+const onTestnet = (request: Request) => new URL(request.url).searchParams.get("chain") === "97";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,13 +61,14 @@ const WHAT: Record<ReferenceAgent["slug"], string> = {
   "grid-1": "Grid-1's live trading window on PancakeSwap V3 WBNB/USDT (fills, win rate, drawdown) and its next signal",
 };
 
-function card(agent: ReferenceAgent) {
-  const base = `${SITE}/a2a/${agent.slug}`;
+function card(agent: ReferenceAgent, testnet = false) {
+  const base = `${SITE}/a2a/${agent.slug}${testnet ? "?chain=97" : ""}`;
   const price = HOUSE_BUDGET.toString();
+  const where = testnet ? "BNB Smart Chain testnet, in test $U" : "BNB Smart Chain";
   return {
     protocolVersion: "0.3.0",
     name: agent.name,
-    description: `${agent.description} Also hired as an ERC-8183 escrowed job in BNB's standard: ask negotiate-erc8183-job for a quote it signs, open the job with the quote in its description, fund it, and it delivers ${WHAT[agent.slug]}.`,
+    description: `${agent.description} Also hired as an ERC-8183 escrowed job in BNB's standard${testnet ? ", here on BNB Smart Chain testnet in test $U" : ""}: ask negotiate-erc8183-job for a quote it signs, open the job with the quote in its description, fund it, and it delivers ${WHAT[agent.slug]}.`,
     url: base,
     preferredTransport: "JSONRPC",
     version: "1.0.0",
@@ -71,7 +81,7 @@ function card(agent: ReferenceAgent) {
       {
         id: "negotiate-erc8183-job",
         name: "Negotiate an ERC-8183 job",
-        description: `Send a data part {"skill": "negotiate-erc8183-job", "task_description": "...", "terms": {"deliverables": "...", "quality_standards": "..."}} and receive a quote this agent signs (EIP-191, its ERC-8004 agentWallet): ${price} base units of $U on BNB Smart Chain, lasting 900 seconds. Anchor it with createJob; the agent delivers ${WHAT[agent.slug]}.`,
+        description: `Send a data part {"skill": "negotiate-erc8183-job", "task_description": "...", "terms": {"deliverables": "...", "quality_standards": "..."}} and receive a quote this agent signs (EIP-191, its ERC-8004 agentWallet): ${price} base units of $U on ${where}, lasting 900 seconds. Anchor it with createJob; the agent delivers ${WHAT[agent.slug]}.`,
         tags: ["erc8183", "negotiation", "bnb-chain"],
         inputModes: ["application/json"],
         outputModes: ["application/json"],
@@ -80,32 +90,44 @@ function card(agent: ReferenceAgent) {
       { id: "erc8183-job-status", name: "ERC-8183 job status", description: 'Send {"skill": "erc8183-job-status", "job_id": <int>} for a read of the job from the kernel.', tags: ["erc8183", "status"], inputModes: ["application/json"], outputModes: ["application/json"] },
       { id: "notify_funded", name: "Job funded", description: 'Send {"skill": "notify_funded", "job_id": <int>} after funding to have it delivered now rather than on the next pass of the chain.', tags: ["erc8183"], inputModes: ["application/json"], outputModes: ["application/json"] },
     ],
-    erc8183: {
-      chain_id: 56,
-      commerce: ESCROW.commerce,
-      router: ESCROW.router,
-      policy: ESCROW.policy,
-      payment_token: ESCROW.paymentToken,
-      price,
-      provider: providerFor(agent.slug)?.owner ?? null,
-      estimated_completion_seconds: ETA_SECONDS,
-    },
+    erc8183: testnet
+      ? {
+          chain_id: 97,
+          commerce: ESCROW_TESTNET.commerce,
+          router: ESCROW_TESTNET.router,
+          policy: ESCROW_TESTNET.policy,
+          payment_token: ESCROW_TESTNET.paymentToken,
+          price,
+          provider: testnetProviderFor(agent.slug)?.owner ?? null,
+          erc8004: testnetProviderFor(agent.slug)?.tokenId ?? null,
+          estimated_completion_seconds: ETA_SECONDS,
+        }
+      : {
+          chain_id: 56,
+          commerce: ESCROW.commerce,
+          router: ESCROW.router,
+          policy: ESCROW.policy,
+          payment_token: ESCROW.paymentToken,
+          price,
+          provider: providerFor(agent.slug)?.owner ?? null,
+          estimated_completion_seconds: ETA_SECONDS,
+        },
   };
 }
 
 /** A quote, or why none is given: this deployment holds no key, the agent is paused, or escrowed jobs are closed here. */
-async function quote(agent: ReferenceAgent, data: Record<string, unknown>): Promise<Record<string, unknown> | { unavailable: string }> {
+async function quote(agent: ReferenceAgent, data: Record<string, unknown>, testnet = false): Promise<Record<string, unknown> | { unavailable: string }> {
   if (!HOUSE_SERVICES[agent.slug]) return { unavailable: "no service" };
   const pause = hirePauseForSlug(agent.slug);
-  const signer = houseSigner(agent.slug);
+  const signer = testnet ? testnetSigner(agent.slug) : houseSigner(agent.slug);
   if (pause || !ESCROW_OPEN || !signer) {
     const reason = pause ? `${agent.name} is paused: ${pause.reason}` : "Escrowed jobs are not open on this deployment.";
     return { request: data, request_hash: "", response: { accepted: false, reason_code: pause ? "0x05" : REASON.UNSUPPORTED, reason }, response_hash: "" };
   }
   return quoteAsSeller(data, {
-    chainId: 56,
-    commerce: getAddress(ESCROW.commerce),
-    token: getAddress(ESCROW.paymentToken),
+    chainId: testnet ? 97 : 56,
+    commerce: getAddress(testnet ? ESCROW_TESTNET.commerce : ESCROW.commerce),
+    token: getAddress(testnet ? ESCROW_TESTNET.paymentToken : ESCROW.paymentToken),
     price: HOUSE_BUDGET,
     etaSeconds: ETA_SECONDS,
     now: Math.floor(Date.now() / 1000),
@@ -120,10 +142,10 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: HEADERS });
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const agent = referenceBySlug((await params).slug);
   if (!agent) return json({ error: "No agent by that name here." }, 404);
-  return NextResponse.json(card(agent), { headers: { ...HEADERS, "cache-control": "public, max-age=300" } });
+  return NextResponse.json(card(agent, onTestnet(request)), { headers: { ...HEADERS, "cache-control": "public, max-age=300" } });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -136,11 +158,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return rpcError(null, -32700, "Parse error", 400);
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return rpcError(null, -32600, "Invalid Request", 400);
+  const testnet = onTestnet(request);
 
   // The SDK agent-server's form: the negotiation request itself, answered with the envelope.
   if (new URL(request.url).searchParams.get("mode") === "negotiate" || (body.jsonrpc === undefined && "terms" in body)) {
     if (limited(request)) return json({ detail: "Too many requests" }, 429);
-    const q = await quote(agent, body);
+    const q = await quote(agent, body, testnet);
     return "unavailable" in q ? json({ error: q.unavailable }, 503) : json(q);
   }
 
@@ -157,7 +180,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     if (typeof data.task_description !== "string" || !data.terms || typeof data.terms !== "object") {
       return rpcError(id, -32602, `${skill} requires 'task_description' (string) and 'terms' (object)`);
     }
-    const q = await quote(agent, data);
+    const q = await quote(agent, data, testnet);
     if ("unavailable" in q) return rpcError(id, -32603, String(q.unavailable));
     return rpcResult(id, q);
   }
@@ -165,7 +188,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const jobId = typeof data.job_id === "number" || (typeof data.job_id === "string" && /^\d{1,12}$/.test(data.job_id)) ? BigInt(data.job_id) : null;
   if ((SKILL.status as readonly string[]).includes(skill)) {
     if (jobId === null) return rpcError(id, -32602, `${skill} requires an integer 'job_id'`);
-    const job = await readJob(jobId).catch(() => null);
+    const job = await (testnet ? readTestnetJob(jobId) : readJob(jobId)).catch(() => null);
     if (!job) return rpcError(id, -32603, `Job ${jobId} lookup failed`);
     return rpcResult(id, {
       job_id: Number(jobId),
@@ -182,16 +205,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   if ((SKILL.notify as readonly string[]).includes(skill)) {
     if (jobId === null) return rpcError(id, -32602, `${skill} requires an integer 'job_id'`);
     if (limited(request)) return rpcError(id, -32000, "Rate limited, retry later");
-    const job = await readJob(jobId).catch(() => null);
+    const job = await (testnet ? readTestnetJob(jobId) : readJob(jobId)).catch(() => null);
     if (!job) return rpcError(id, -32603, `Job ${jobId} lookup failed`);
-    if (job.provider.toLowerCase() !== (providerFor(agent.slug)?.owner ?? "").toLowerCase()) return rpcError(id, -32602, `Job ${jobId} names a different provider`);
+    const owner = (testnet ? testnetProviderFor(agent.slug)?.owner : providerFor(agent.slug)?.owner) ?? "";
+    if (job.provider.toLowerCase() !== owner.toLowerCase()) return rpcError(id, -32602, `Job ${jobId} names a different provider`);
     if (!JOB_STATUS.includes(job.status) || job.status === "OPEN") return rpcError(id, -32602, `Job ${jobId} is not funded yet`);
     // Taken on and delivered after answering; the same checks as the chain watcher's.
     after(async () => {
-      const r = await recordFound(jobId, null).catch(() => "failed");
-      if (r === "recorded" || r === "already recorded") await deliver(jobId.toString()).catch(() => undefined);
+      const r = await (testnet ? recordTestnetFound(jobId, null) : recordFound(jobId, null)).catch(() => "failed");
+      if (r === "recorded" || r === "already recorded") await (testnet ? deliverTestnet(jobId.toString()) : deliver(jobId.toString())).catch(() => undefined);
     });
-    return rpcResult(id, { received: true, job_id: Number(jobId), deliverable_url: `${SITE}/api/escrow/jobs/${jobId}/deliverable`, estimated_completion_seconds: 60 });
+    const url = testnet ? testnetDeliverableUrl(jobId.toString()) : `${SITE}/api/escrow/jobs/${jobId}/deliverable`;
+    return rpcResult(id, { received: true, job_id: Number(jobId), deliverable_url: url, estimated_completion_seconds: 60 });
   }
 
   return rpcError(id, -32602, `Unknown skill: ${JSON.stringify(skill)}`);

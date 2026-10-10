@@ -137,6 +137,15 @@ export interface ReferenceRegistration {
   block: number;
 }
 
+/** Our agents' identities on BNB Smart Chain testnet, by slug, written by register-reference-testnet. Empty until it has run. */
+export function referenceRegistrationsTestnet(): Record<string, ReferenceRegistration> {
+  try {
+    return JSON.parse(readFileSync(join(process.cwd(), "src/data/reference-agents-testnet.json"), "utf8")) as Record<string, ReferenceRegistration>;
+  } catch {
+    return {};
+  }
+}
+
 /** Registrations that have landed, by slug. Empty until the script has run. */
 export function referenceRegistrations(): Record<string, ReferenceRegistration> {
   try {

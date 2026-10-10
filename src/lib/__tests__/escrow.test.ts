@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { keccak256, stringToHex } from "viem";
 import { ERC8183_ADDRESSES } from "@altananetwork/sdk";
-import { ESCROW, JOB_STATUS } from "../escrow/contracts";
+import { ESCROW, ESCROW_TESTNET, JOB_STATUS } from "../escrow/contracts";
 
 vi.mock("@/lib/db/client", () => ({ sql: null, db: null, hasDb: false }));
 
@@ -17,6 +17,18 @@ describe("escrow contracts", () => {
     expect(ESCROW.router).toBe(sdk.router);
     expect(ESCROW.policy).toBe(sdk.policy);
     expect(ESCROW.paymentToken).toBe(sdk.paymentToken);
+  });
+
+  it("on testnet are BNB's agent SDK's own addresses for chain 97", async () => {
+    const { NETWORKS } = await import("@bnbagent/sdk");
+    const { getAddress: deployment } = await import("@bnbagent/sdk/networks");
+    const { getAddress } = await import("viem");
+    const n = NETWORKS["bsc-testnet"]!;
+    expect(ESCROW_TESTNET.commerce).toBe(getAddress(n.commerceContract));
+    expect(ESCROW_TESTNET.router).toBe(getAddress(n.routerContract));
+    expect(ESCROW_TESTNET.policy).toBe(getAddress(n.policyContract));
+    expect(ESCROW_TESTNET.identity).toBe(getAddress(n.registryContract));
+    expect(ESCROW_TESTNET.paymentToken).toBe(getAddress(deployment(97).paymentToken));
   });
 
   it("names the kernel's states in its own order", async () => {

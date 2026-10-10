@@ -5919,6 +5919,15 @@ a.x-house__name:hover {
     padding: var(--s-5) var(--s-4);
   }
 }
+/* The free testnet pack: dashed and plain, so it never reads as the paid one. */
+.x-pack--testnet {
+  border: 1px dashed var(--c-line-strong);
+  background: var(--c-surface);
+}
+.x-pack--testnet .x-share__url {
+  white-space: normal;
+  word-break: break-all;
+}
 .x-quest__bar {
   display: flex;
   flex-wrap: wrap;

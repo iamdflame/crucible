@@ -11,6 +11,7 @@
  */
 
 import { IDENTITY_REGISTRY } from "@/lib/config";
+import { ESCROW_TESTNET } from "@/lib/escrow/contracts";
 import { SITE } from "@/lib/site";
 import { pyJson } from "@/lib/escrow/sdk";
 import type { ReferenceAgent } from "@/lib/house";
@@ -32,6 +33,31 @@ export function sdkRegistration(agent: ReferenceAgent, tokenId: string): Record<
     x402Support: true,
     active: true,
     registrations: [{ agentId: Number(tokenId), agentRegistry: `eip155:56:${IDENTITY_REGISTRY}` }],
+    supportedTrust: ["crypto-economic"],
+  };
+}
+
+/**
+ * The same agent's registration on BNB Smart Chain testnet. Its A2A card
+ * carries `?chain=97`, so a buyer on a testnet marketplace (Pokter, KATTEGAT,
+ * Agent Atlas, HelloFugu) is quoted in test $U on the testnet kernel, and the
+ * agent delivers there. No x402 service: paid calls settle on mainnet only.
+ * `tokenId` is null for the first write, before the registry has given one.
+ */
+export function sdkRegistrationTestnet(agent: ReferenceAgent, tokenId: string | null, mainnetTokenId: string): Record<string, unknown> {
+  return {
+    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+    name: agent.name,
+    description: `${agent.description} On BNB Smart Chain testnet, hired free in test $U.`,
+    image: `${SITE}/brand-kit/mandate-mark-512.png`,
+    services: [
+      { name: "A2A", endpoint: `${SITE}/a2a/${agent.slug}/.well-known/agent-card.json?chain=97`, version: "0.3.0" },
+      { name: "MCP", endpoint: `${SITE}/api/mcp` },
+      { name: "web", endpoint: `${SITE}/agents/${mainnetTokenId}` },
+    ],
+    x402Support: false,
+    active: true,
+    registrations: tokenId ? [{ agentId: Number(tokenId), agentRegistry: `eip155:97:${ESCROW_TESTNET.identity}` }] : [],
     supportedTrust: ["crypto-economic"],
   };
 }

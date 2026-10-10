@@ -21,6 +21,21 @@ export const ESCROW = {
   paymentToken: "0xcE24439F2D9C6a2289F741120FE202248B666666",
 } as const satisfies Record<string, Address>;
 
+/**
+ * The same kernel on BNB Smart Chain testnet (chain 97), where Set and Earn
+ * also counts hires and four shortlisted marketplaces hire for free, paid in
+ * test $U. Written from BNB's agent SDK (NETWORKS["bsc-testnet"] and
+ * getAddress(97)); a test holds them equal to it.
+ */
+export const ESCROW_TESTNET = {
+  commerce: "0xa206c0517B6371C6638CD9e4a42Cc9f02A33B0DE",
+  router: "0xD7d36D66d2F1B608A0F943f722D27e3744f66F25",
+  policy: "0xd6a4217588F6B1F5657a92A3e94E6422aD771cEA",
+  paymentToken: "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565",
+  /** The ERC-8004 identity registry on testnet, where our agents hold their testnet identities. */
+  identity: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+} as const satisfies Record<string, Address>;
+
 /** The kernel's job states, in its own order. */
 export const JOB_STATUS = ["OPEN", "FUNDED", "SUBMITTED", "COMPLETED", "REJECTED", "EXPIRED"] as const;
 export type JobStatus = (typeof JOB_STATUS)[number];

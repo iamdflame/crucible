@@ -13,6 +13,10 @@ import { listings } from "@/lib/market/listing";
 import { hirePath } from "@/lib/market/hire-law";
 import { houseSlug } from "@/lib/market/performance";
 import type { PackAgent } from "@/components/x/HirePack";
+import type { TestnetPackAgent } from "@/components/x/TestnetPack";
+import { testnetProviderFor } from "@/lib/escrow/testnet-jobs";
+import { HOUSE_BUDGET } from "@/lib/escrow/contracts";
+import { hirePauseForSlug } from "@/lib/market/paused";
 
 /*
   The pack's two agents: ours, so a delivery within the escrow policy's
@@ -63,6 +67,22 @@ export default async function QuestPage({ searchParams }: { searchParams: Promis
     .sort((a, b) => PACK_ORDER.indexOf(a.slug) - PACK_ORDER.indexOf(b.slug))
     .slice(0, 2)
     .map(({ slug, offer }) => ({ tokenId: offer.tokenId, name: offer.name, does: DOES[slug] ?? offer.task, provider: offer.escrow!.provider, budget: offer.escrow!.budget }));
+  // The same two agents on testnet, where Set and Earn also counts hires and the buyer pays in test $U.
+  const packSlugs = pack.map((a) => houseSlug(a.tokenId)).filter((s): s is NonNullable<typeof s> => s !== null) as string[];
+  const testnetPack: TestnetPackAgent[] = (packSlugs.length >= 2 ? packSlugs : PACK_ORDER)
+    .filter((slug) => !hirePauseForSlug(slug))
+    .map((slug) => ({ slug, t: testnetProviderFor(slug) }))
+    .filter((x): x is { slug: string; t: NonNullable<ReturnType<typeof testnetProviderFor>> } => Boolean(x.t?.mainnetTokenId))
+    .slice(0, 2)
+    .map(({ slug, t }) => ({
+      slug,
+      name: t.ref.name,
+      does: DOES[slug] ?? t.ref.description,
+      tokenId: t.tokenId,
+      mainnetTokenId: t.mainnetTokenId!,
+      provider: t.owner,
+      budget: HOUSE_BUDGET.toString(),
+    }));
   const cards: QuestCard[] = picks.map((p) => {
     const offer = p.pick ? offerFor(p.pick) : null;
     return {
@@ -88,7 +108,7 @@ export default async function QuestPage({ searchParams }: { searchParams: Promis
         </div>
       </section>
       <div className="x-wrap x-section--tight">
-        <QuestBoard cards={cards} campaign={CAMPAIGN} pack={pack} />
+        <QuestBoard cards={cards} campaign={CAMPAIGN} pack={pack} testnetPack={testnetPack} />
       </div>
     </AppShell>
   );
