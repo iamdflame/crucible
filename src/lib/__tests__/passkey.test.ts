@@ -33,6 +33,7 @@ describe("describeTx", () => {
     expect(open.lines.join(" ")).toContain("Guard-1");
     const fund = describeTx({ to: ESCROW_TESTNET.commerce, data: encodeFunctionData({ abi: COMMERCE_ABI, functionName: "fund", args: [12n, 10n ** 16n, "0x"] }) }, 97);
     expect(fund.title).toBe("Fund job #12");
+    expect(fund.lines[0]).toContain("0.01 test $U");
     expect(fund.lines.join(" ")).toContain("testnet");
     const bind = describeTx({ to: ESCROW.router, data: encodeFunctionData({ abi: ROUTER_ABI, functionName: "registerJob", args: [12n, ESCROW.policy] }) }, 56);
     expect(bind.title).toContain("dispute policy");

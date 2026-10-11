@@ -59,9 +59,11 @@ export function describeTx(tx: { to?: string | null; data?: Hex | null; value?: 
     if (t === ESCROW.commerce.toLowerCase() || t === ESCROW_TESTNET.commerce.toLowerCase()) {
       const d = decodeFunctionData({ abi: COMMERCE_ABI, data: tx.data });
       const a = d.args as readonly unknown[];
+      // Each escrow is paid in one token: $U on mainnet, test $U on testnet.
+      const unit = t === ESCROW_TESTNET.commerce.toLowerCase() ? "test $U" : "$U";
       if (d.functionName === "createJob") return { title: "Open a job in the escrow", lines: [`Agent paid on delivery: ${short(String(a[0]))}.`, `Description: ${String(a[3]).slice(0, 160)}`, ...sends, net] };
-      if (d.functionName === "setBudget") return { title: `Set job #${String(a[0])}'s budget`, lines: [`Budget: ${formatUnits(a[1] as bigint, 18)}.`, net] };
-      if (d.functionName === "fund") return { title: `Fund job #${String(a[0])}`, lines: [`Moves ${formatUnits(a[1] as bigint, 18)} into the escrow. The agent is paid when it delivers; if it does not, you reclaim it.`, net] };
+      if (d.functionName === "setBudget") return { title: `Set job #${String(a[0])}'s budget`, lines: [`Budget: ${formatUnits(a[1] as bigint, 18)} ${unit}.`, net] };
+      if (d.functionName === "fund") return { title: `Fund job #${String(a[0])}`, lines: [`Moves ${formatUnits(a[1] as bigint, 18)} ${unit} into the escrow. The agent is paid when it delivers; if it does not, you reclaim it.`, net] };
       if (d.functionName === "claimRefund") return { title: `Reclaim job #${String(a[0])}'s budget`, lines: [net] };
       return { title: `Escrow: ${d.functionName}`, lines: [...sends, net] };
     }
