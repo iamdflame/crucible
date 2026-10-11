@@ -1,6 +1,7 @@
 "use client";
 
 import OpenInWallet from "@/components/x/OpenInWallet";
+import { PasskeyPanel, PasskeyStart } from "@/components/x/Passkey";
 import { useEffect, useRef, useState } from "react";
 import { useWallet, fmtBnb } from "@/lib/chain/wallet";
 import { marketChain } from "@/lib/chain/market";
@@ -71,6 +72,7 @@ export default function WalletButton() {
             This browser has no wallet extension. You can browse, compare and even try some agents for free without
             one. You only need a wallet at the moment you pay.
           </p>
+          <PasskeyStart />
           <OpenInWallet label="On a phone? Open this page in your wallet app" />
           <a className="x-btn x-btn--sm x-btn--block x-btn--ghost" href="https://www.bnbchain.org/en/wallets" target="_blank" rel="noreferrer">
             Get a BNB Smart Chain wallet
@@ -161,6 +163,8 @@ export default function WalletButton() {
             Switch to {marketChain.name}
           </button>
         ) : null}
+
+        <PasskeyPanel address={address} chainId={chainId} />
 
         <button
           type="button"

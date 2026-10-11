@@ -229,13 +229,60 @@ export function useWallet() {
       window.removeEventListener("ethereum#initialized", onAnnounce);
     };
 
+    /*
+      Listening is attached to whichever wallet is present, and again when one
+      arrives later: a passkey wallet opened on this page (lib/passkey) comes
+      after the page, and a hook that only listened at mount never heard it
+      switch network or change account.
+    */
+    let detach: (() => void) | null = null;
+    const attach = (provider: NonNullable<typeof window.ethereum>) => {
+      if (detach) return;
+      const onAccounts = (accounts: unknown) => {
+        const list = accounts as Address[];
+        // After a disconnect, a wallet that cannot give up its permission may
+        // still announce accounts. They are ignored until the person connects
+        // again, or "disconnect" would undo itself on the next account switch.
+        if (list?.length && !hasConnectedBefore()) return;
+        void refresh(list?.length ? list[0] : null);
+      };
+      const onChain = () => {
+        setState((s) => {
+          if (s.address) void refresh(s.address);
+          return s;
+        });
+      };
+      const p = provider as unknown as {
+        on?: (e: string, h: (v: unknown) => void) => void;
+        removeListener?: (e: string, h: (v: unknown) => void) => void;
+      };
+      p.on?.("accountsChanged", onAccounts);
+      p.on?.("chainChanged", onChain);
+      detach = () => {
+        p.removeListener?.("accountsChanged", onAccounts);
+        p.removeListener?.("chainChanged", onChain);
+      };
+    };
+    const onLater = () => {
+      const provider = window.ethereum;
+      if (!provider || cancelled) return;
+      markAvailable();
+      attach(provider);
+    };
+    window.addEventListener("eip6963:announceProvider", onLater);
+    window.addEventListener("mandate:passkey-opened", onLater);
+
     const provider = window.ethereum;
     if (!provider) {
       setState((s) => ({ ...s, available: false }));
-      return cleanupDetect;
+      return () => {
+        cleanupDetect();
+        window.removeEventListener("eip6963:announceProvider", onLater);
+        window.removeEventListener("mandate:passkey-opened", onLater);
+        detach?.();
+      };
     }
     setState((s) => ({ ...s, available: true }));
-
     if (hasConnectedBefore()) {
       provider
         .request({ method: "eth_accounts" })
@@ -245,32 +292,12 @@ export function useWallet() {
         })
         .catch(() => undefined);
     }
-
-    const onAccounts = (accounts: unknown) => {
-      const list = accounts as Address[];
-      // After a disconnect, a wallet that cannot give up its permission may
-      // still announce accounts. They are ignored until the person connects
-      // again, or "disconnect" would undo itself on the next account switch.
-      if (list?.length && !hasConnectedBefore()) return;
-      void refresh(list?.length ? list[0] : null);
-    };
-    const onChain = () => {
-      setState((s) => {
-        if (s.address) void refresh(s.address);
-        return s;
-      });
-    };
-
-    const p = provider as unknown as {
-      on?: (e: string, h: (v: unknown) => void) => void;
-      removeListener?: (e: string, h: (v: unknown) => void) => void;
-    };
-    p.on?.("accountsChanged", onAccounts);
-    p.on?.("chainChanged", onChain);
+    attach(provider);
     return () => {
       cleanupDetect();
-      p.removeListener?.("accountsChanged", onAccounts);
-      p.removeListener?.("chainChanged", onChain);
+      window.removeEventListener("eip6963:announceProvider", onLater);
+      window.removeEventListener("mandate:passkey-opened", onLater);
+      detach?.();
     };
   }, [refresh]);
 

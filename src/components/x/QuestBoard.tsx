@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import HireDrawer, { type HireOffer } from "@/components/x/HireDrawer";
 import OpenInWallet from "@/components/x/OpenInWallet";
+import { PasskeyStart } from "@/components/x/Passkey";
 import NeedHelp from "@/components/x/NeedHelp";
 import HirePack, { type PackAgent } from "@/components/x/HirePack";
 import TestnetPack, { type TestnetPackAgent } from "@/components/x/TestnetPack";
@@ -163,6 +164,7 @@ export default function QuestBoard({
             ) : (
               <div className="x-quest__note">
                 <OpenInWallet />
+                <PasskeyStart quiet />
               </div>
             )}
           </>

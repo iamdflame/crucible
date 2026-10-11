@@ -2,6 +2,7 @@ import Navbar from "./Navbar";
 import CampaignStrip from "./CampaignStrip";
 import Footer from "./Footer";
 import CompareTray from "./CompareTray";
+import { PasskeyHost } from "./Passkey";
 
 /**
  * The one shell every page renders inside.
@@ -23,6 +24,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       <Footer />
       <CompareTray />
+      <PasskeyHost />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { canBatch, NotBatchable, sendBatch } from "@/lib/escrow/batch";
 import { readableError } from "@/lib/chain/wallet";
 import { track } from "@/lib/ops/funnel-client";
 import OpenInWallet from "./OpenInWallet";
+import { PasskeyStart } from "./Passkey";
 
 export interface TestnetPackAgent {
   slug: string;
@@ -285,8 +286,9 @@ export default function TestnetPack({ agents }: { agents: TestnetPackAgent[] }) 
 
       {!available ? (
         <div className="x-pack__wallet">
-          <p className="x-pack__note">Hiring needs a wallet. On a phone, open this page in your wallet app:</p>
+          <p className="x-pack__note">Hiring needs a wallet. On a phone, open this page in your wallet app, or make one here with a passkey:</p>
           <OpenInWallet label="Open this page in your wallet app" />
+          <PasskeyStart quiet />
         </div>
       ) : !address ? (
         <>

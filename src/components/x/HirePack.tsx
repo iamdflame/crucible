@@ -11,6 +11,7 @@ import { canBatch, NotBatchable, sendBatch } from "@/lib/escrow/batch";
 import { planSwap, type SwapPlan } from "@/lib/escrow/pay-with-bnb";
 import { track } from "@/lib/ops/funnel-client";
 import OpenInWallet from "./OpenInWallet";
+import { PasskeyStart } from "./Passkey";
 
 export interface PackAgent {
   tokenId: string;
@@ -203,8 +204,9 @@ export default function HirePack({ agents }: { agents: PackAgent[] }) {
 
       {!available ? (
         <div className="x-pack__wallet">
-          <p className="x-pack__note">Hiring needs a wallet on BNB Smart Chain. On a phone, open this page in your wallet app:</p>
+          <p className="x-pack__note">Hiring needs a wallet on BNB Smart Chain. On a phone, open this page in your wallet app, or make one here with a passkey:</p>
           <OpenInWallet label="Open this page in your wallet app" />
+          <PasskeyStart quiet />
         </div>
       ) : !address ? (
         <>
