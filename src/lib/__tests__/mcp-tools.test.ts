@@ -35,7 +35,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("the MCP tools", () => {
   it("lists the marketplace tools first, each name once", () => {
     const names = TOOL_SPECS.map((t) => t.name);
-    expect(names.slice(0, 8)).toEqual(["search_agents", "get_agent", "list_jobs", "try_agent", "get_price", "hire_agent", "check_agent", "quest_progress"]);
+    expect(names.slice(0, 9)).toEqual(["search_agents", "get_agent", "list_jobs", "try_agent", "get_price", "hire_agent", "check_agent", "build_prompt", "quest_progress"]);
     expect(new Set(names).size).toBe(names.length);
     expect(names).not.toContain("hire_erc8183");
   });

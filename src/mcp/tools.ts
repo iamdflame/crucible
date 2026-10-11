@@ -38,6 +38,7 @@ import { openMandate as sendOpenMandate, openMandateArgs } from "@/lib/chain/mar
 import { readKey } from "@/lib/chain/keystore";
 import { payAndCall } from "@/lib/x402/pay-server";
 import { toJson } from "@/lib/chain/session-store";
+import { buildPrompt, promptUrl } from "@/lib/build/prompt";
 import { SITE } from "@/lib/site";
 
 const HOST = SITE;
@@ -241,6 +242,16 @@ const checkAgent: Handler = async (a) => {
     at: q.at,
     page: `${HOST}/check?q=${tokenId}`,
   };
+};
+
+const buildPromptTool: Handler = async (a) => {
+  const job = jobOf(a);
+  if (!job) throw new Error(`job is required: one of ${CATEGORIES.join(", ")}`);
+  const network = str(a, "network") === "testnet" ? "testnet" : "mainnet";
+  const wallet = str(a, "wallet");
+  if (wallet !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new Error("wallet must be a 0x address.");
+  const input = { job, network, wallet: wallet ?? null, idea: str(a, "idea")?.slice(0, 400) ?? null } as const;
+  return { prompt: buildPrompt(input), url: promptUrl(input), use: "Follow the prompt with the builder, step by step. Never ask for the campaign wallet's key." };
 };
 
 interface Quest {
@@ -555,6 +566,23 @@ export const TOOLS: Array<ToolSpec & { handler: Handler }> = [
       "Check an agent against BNB Chain's six Set and Earn checks (registered and owned, discoverable, live, hired by others, actually executes, does what it says), read from the chain and its endpoint. For builders asking whether their agent qualifies.",
     inputSchema: { type: "object", properties: { tokenId: TOKEN_ID }, required: ["tokenId"], additionalProperties: false },
     handler: checkAgent,
+  },
+  {
+    name: "build_prompt",
+    description:
+      "Instructions for building a BNB Chain Set and Earn agent with the builder, step by step: BNB Chain's six checks, BNB's agent SDK and the parts that sell an escrowed job, the onchain work that counts for the chosen job, the contracts for the chosen network, and where test tokens come from. Read it and follow it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        job: JOB,
+        network: { type: "string", enum: ["mainnet", "testnet"], description: "mainnet (default; MANDATE checks all six) or testnet (free test tokens)." },
+        wallet: { type: "string", description: "The builder's campaign wallet, which will own the agent. Optional." },
+        idea: { type: "string", description: "What the builder wants it to do, in their words. Optional." },
+      },
+      required: ["job"],
+      additionalProperties: false,
+    },
+    handler: buildPromptTool,
   },
   {
     name: "quest_progress",

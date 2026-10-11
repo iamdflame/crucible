@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import AppShell from "@/components/v2/shell/AppShell";
 import CreateAgent from "@/components/x/CreateAgent";
+import BuildPrompt from "@/components/x/BuildPrompt";
 import NeedHelp from "@/components/x/NeedHelp";
 import { LIST_RUNGS } from "@/lib/market/list-ladder";
 import { QUALIFIES } from "@/lib/campaign/rules";
@@ -58,6 +59,7 @@ export default function BuildPage() {
             </Link>
           </p>
         </section>
+        <BuildPrompt />
         <ol className="x-build__steps">
           <li className="x-build__step">
             <span className="x-home__n">1</span>

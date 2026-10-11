@@ -22,6 +22,7 @@ const READ_TOOLS = [
   "try_agent",
   "get_price",
   "check_agent",
+  "build_prompt",
   "quest_progress",
   "assay_agent",
   "check_duplication",
