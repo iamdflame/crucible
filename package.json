@@ -78,6 +78,7 @@
     "register-reference-testnet": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/register-reference-testnet.ts",
     "escrow-testnet-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/escrow-testnet-e2e.ts",
     "testnet-pack-ui": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/testnet-pack-ui.ts",
+    "passkey-ui": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/passkey-ui.ts",
     "fund-test-wallet": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/fund-test-wallet.ts",
     "escrow-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/escrow-e2e.ts",
     "escrow-outside-e2e": "tsx --env-file=.env --env-file-if-exists=.env.local src/scripts/escrow-outside-e2e.ts",
