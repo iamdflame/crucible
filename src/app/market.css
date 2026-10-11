@@ -194,6 +194,11 @@ html:has(.x-app) body {
 }
 .x-btn--block {
   width: 100%;
+  /* A full-width button wraps rather than pushing the page sideways: a status like "Confirm in your wallet: Open Mandate Guard-1's job (1 of 9)" widened a phone's page and pushed the approval sheet's Approve off the screen (11 Oct). */
+  white-space: normal;
+  text-align: center;
+  padding-top: var(--s-2);
+  padding-bottom: var(--s-2);
 }
 /* On a touch screen even the small size keeps a 44px target. */
 @media (pointer: coarse) {
@@ -8343,7 +8348,11 @@ a.x-house__name:hover {
   padding-left: 1.1em;
   color: var(--c-text-2);
   font-size: var(--ts-sm);
-  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.x-approve__card {
+  min-width: 0;
+  max-width: 100%;
 }
 .x-approve__acts {
   display: flex;
