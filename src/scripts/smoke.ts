@@ -272,6 +272,13 @@ async function main() {
     record("/a2a/guard-1?chain=97", false, `expected JSON, got ${card97.status}`);
   }
 
+  // The build prompt an assistant reads at its link carries BNB Chain's six checks.
+  const prompt = await get(`/api/build/prompt?job=health-factor&network=mainnet`);
+  {
+    const good = prompt.status === 200 && ["Registered and owned", "Discoverable", "Live", "Hired by others", "Actually executes", "Does what it says"].every((t) => prompt.text.includes(t));
+    record("/api/build/prompt: the build prompt carries the six checks", good, good ? `${prompt.text.length} chars` : `${prompt.status} ${prompt.text.slice(0, 120)}`);
+  }
+
   // An AI assistant connecting over MCP gets the marketplace tools first.
   try {
     const res = await fetch(`${BASE}/api/mcp`, {
