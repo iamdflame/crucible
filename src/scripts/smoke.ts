@@ -183,6 +183,7 @@ async function main() {
     { name: "BNB's rules and its registration are stated", test: (h) => (h.includes("forms.gle/jzTajVNZEgukeoYT9") && h.includes("different agents")) || "no campaign rules or registration link" },
     // Most people arrive here to hire: two of the three, in one confirmation, before the rules.
     { name: "the two-hire pack comes first", test: (h) => (h.includes('class="x-pack"') && h.indexOf('class="x-pack"') < h.indexOf("x-quest__steps")) || "no pack ahead of the steps" },
+    { name: "the same two hires are offered free on testnet", test: (h) => h.includes("free on testnet") || "no testnet pack" },
   ]);
   // A builder learns whether people can hire their agent here.
   await page("/check?q=344119", [{ name: "says whether people can hire it here", test: (h) => h.includes("Can people hire it on MANDATE?") || "no hire box" }]);
@@ -259,6 +260,16 @@ async function main() {
     record("/api/v1/market: at least 25 ready, each with a hire link", good, good ? `${j.data!.ready} ready` : market.text.slice(0, 160));
   } catch {
     record("/api/v1/market", false, `expected JSON, got ${market.status}`);
+  }
+
+  // Our agents sell on testnet too: the card a testnet marketplace reads names chain 97 and test $U.
+  const card97 = await get(`/a2a/guard-1/.well-known/agent-card.json?chain=97`);
+  try {
+    const j = JSON.parse(card97.text) as { url?: string; erc8183?: { chain_id?: number; erc8004?: string | null } };
+    const good = j.erc8183?.chain_id === 97 && Boolean(j.erc8183.erc8004) && Boolean(j.url?.includes("chain=97"));
+    record("/a2a/guard-1?chain=97: the testnet card names chain 97 and its testnet identity", good, good ? `testnet #${j.erc8183!.erc8004}` : card97.text.slice(0, 160));
+  } catch {
+    record("/a2a/guard-1?chain=97", false, `expected JSON, got ${card97.status}`);
   }
 
   // An AI assistant connecting over MCP gets the marketplace tools first.
